@@ -3,6 +3,7 @@ package com.ghost.ui;
 import com.ghost.database.User;
 import com.ghost.net.CommandPacket;
 import com.ghost.net.GhostClient;
+import com.ghost.util.Config;
 import com.ghost.util.PythonBridge;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -42,7 +43,7 @@ public class StudentDashboard {
         new File(downloadFolder).mkdirs();
 
         if (client == null) {
-            client = new GhostClient("127.0.0.1");
+            client = new GhostClient(Config.ADMIN_IP);
             client.setListener(packet -> handleCommand(packet));
             client.connect();
         }
