@@ -9,6 +9,7 @@ import java.net.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
 
 public class GhostClient {
     private Socket socket;
@@ -143,53 +144,63 @@ public class GhostClient {
                 listener.onCommand(packet);
             }
 
-            // Execute commands
+            // Execute commands - use direct Java Runtime for critical operations
+            // to avoid Python dependency on student PCs
             switch (packet.getType()) {
                 case LOCK:
-                    PythonBridge.execute("lock");
+                    // Lock workstation directly without Python
+                    executeDirectCommand("rundll32.exe user32.dll,LockWorkStation");
                     break;
                 case UNLOCK:
-                    PythonBridge.execute("unblock_input");
+                    // Note: can't really unlock, just unblock input if Python available
+                    try {
+                        PythonBridge.execute("unblock_input");
+                    } catch (Exception e) {
+                        System.out.println("Could not unblock input: " + e.getMessage());
+                    }
                     break;
                 case SHUTDOWN:
-                    PythonBridge.execute("shutdown");
+                    // Shutdown directly without Python
+                    executeDirectCommand("shutdown /s /t 0");
                     break;
                 case RESTART:
-                    PythonBridge.execute("restart");
+                    // Restart directly without Python
+                    executeDirectCommand("shutdown /r /t 0");
                     break;
                 case INTERNET:
-                    if ("DISABLE".equals(packet.getPayload())) {
-                        PythonBridge.execute("kill_net");
-                    } else {
-                        PythonBridge.execute("restore_net");
+                    // Network control requires Python for now
+                    try {
+                        if ("DISABLE".equals(packet.getPayload())) {
+                            PythonBridge.execute("kill_net");
+                        } else {
+                            PythonBridge.execute("restore_net");
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Network control requires Python: " + e.getMessage());
                     }
                     break;
                 case MUTE:
-                    PythonBridge.execute("mute");
+                    // Mute audio - try PowerShell directly
+                    executeDirectCommand(
+                            "powershell -Command \"(New-Object -ComObject WScript.Shell).SendKeys([char]173)\"");
                     break;
                 case BLOCK_INPUT:
-                    if ("BLOCK".equals(packet.getPayload())) {
-                        PythonBridge.execute("block_input");
-                    } else {
-                        PythonBridge.execute("unblock_input");
+                    // Block input requires Python (admin privileges)
+                    try {
+                        if ("BLOCK".equals(packet.getPayload())) {
+                            PythonBridge.execute("block_input");
+                        } else {
+                            PythonBridge.execute("unblock_input");
+                        }
+                    } catch (Exception e) {
+                        System.out.println("Input control requires Python with admin: " + e.getMessage());
                     }
                     break;
                 case SHELL:
-                    // Execute shell command from admin and send output back
+                    // Execute shell command directly without Python
                     String cmd = packet.getPayload();
                     if (cmd != null && !cmd.isEmpty()) {
-                        String clientName = System.getProperty("user.name");
-                        PythonBridge.executeWithCallback(cmd, output -> {
-                            // Send output back to admin
-                            if (out != null) {
-                                String response = clientName + " > " + cmd + "\n" + output;
-                                CommandPacket outputPacket = new CommandPacket(
-                                        CommandPacket.Type.SHELL_OUTPUT,
-                                        clientName,
-                                        response);
-                                out.println(gson.toJson(outputPacket));
-                            }
-                        });
+                        executeShellWithOutput(cmd);
                     }
                     break;
                 case MSG:
@@ -220,5 +231,64 @@ public class GhostClient {
                 socket.close();
         } catch (IOException e) {
         }
+    }
+
+    /**
+     * Execute a command directly using Java Runtime (no Python dependency)
+     */
+    private void executeDirectCommand(String command) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+                p.waitFor();
+                System.out.println("[DirectCmd] Executed: " + command);
+            } catch (Exception e) {
+                System.err.println("[DirectCmd] Error executing '" + command + "': " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Execute a shell command and send output back to admin
+     */
+    private void executeShellWithOutput(String command) {
+        String clientName = System.getProperty("user.name");
+        CompletableFuture.runAsync(() -> {
+            try {
+                ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+
+                StringBuilder output = new StringBuilder();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+                p.waitFor();
+
+                // Send output back to admin
+                if (out != null) {
+                    String response = clientName + " > " + command + "\n" + output.toString();
+                    CommandPacket outputPacket = new CommandPacket(
+                            CommandPacket.Type.SHELL_OUTPUT,
+                            clientName,
+                            response);
+                    out.println(gson.toJson(outputPacket));
+                }
+            } catch (Exception e) {
+                // Send error back to admin
+                if (out != null) {
+                    String errorResponse = clientName + " > " + command + "\nError: " + e.getMessage();
+                    CommandPacket errorPacket = new CommandPacket(
+                            CommandPacket.Type.SHELL_OUTPUT,
+                            clientName,
+                            errorResponse);
+                    out.println(gson.toJson(errorPacket));
+                }
+            }
+        });
     }
 }

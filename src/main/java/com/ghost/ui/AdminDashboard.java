@@ -324,7 +324,7 @@ public class AdminDashboard {
 
     private static void startAdminScreenShare() {
         screenScheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
-        // 30fps = 33ms interval
+        // 60fps = 16ms interval for smoother streaming
         screenScheduler.scheduleAtFixedRate(() -> {
             if (screenSharing) {
                 String base64 = ScreenCapture.captureForStreaming(); // 60% res, 80% quality
@@ -332,7 +332,7 @@ public class AdminDashboard {
                     server.broadcast(new CommandPacket(CommandPacket.Type.ADMIN_SCREEN, "ADMIN", base64));
                 }
             }
-        }, 0, 33, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }, 0, 16, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     private static void stopAdminScreenShare() {

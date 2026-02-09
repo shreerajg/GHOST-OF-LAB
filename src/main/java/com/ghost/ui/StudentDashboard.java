@@ -507,7 +507,13 @@ public class StudentDashboard {
                 case LOCK:
                     lockOverlay.setVisible(true);
                     lockOverlay.toFront();
-                    showNotification("🔒 Screen locked by Admin");
+                    // Only show 'pay attention' if student is NOT watching admin stream
+                    // (if they're watching the stream, they ARE paying attention)
+                    if (streamView == null || streamView.getImage() == null) {
+                        showNotification("🔒 Pay attention to your instructor!");
+                    } else {
+                        showNotification("🔒 Screen locked by Admin");
+                    }
                     break;
                 case UNLOCK:
                     lockOverlay.setVisible(false);
