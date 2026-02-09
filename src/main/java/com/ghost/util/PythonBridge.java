@@ -40,6 +40,53 @@ public class PythonBridge {
         }).start();
     }
 
+    /**
+     * Execute command and return output via callback (for commands that need to
+     * report results)
+     */
+    public static void executeWithCallback(String command, java.util.function.Consumer<String> callback) {
+        new Thread(() -> {
+            try {
+                ProcessBuilder pb = new ProcessBuilder("python", SCRIPT_PATH, command);
+                File scriptFile = new File(SCRIPT_PATH);
+                if (!scriptFile.exists()) {
+                    pb.command("python", "../python_modules/executor.py", command);
+                }
+
+                Process p = pb.start();
+
+                StringBuilder output = new StringBuilder();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                    System.out.println("[Python]: " + line);
+                }
+
+                // Also capture stderr
+                BufferedReader errorReader = new BufferedReader(new InputStreamReader(p.getErrorStream()));
+                while ((line = errorReader.readLine()) != null) {
+                    output.append("[ERROR] ").append(line).append("\n");
+                }
+
+                int exitCode = p.waitFor();
+
+                if (callback != null) {
+                    String result = output.toString().trim();
+                    if (result.isEmpty()) {
+                        result = "(Command completed with exit code " + exitCode + ")";
+                    }
+                    callback.accept(result);
+                }
+
+            } catch (Exception e) {
+                if (callback != null) {
+                    callback.accept("Error: " + e.getMessage());
+                }
+            }
+        }).start();
+    }
+
     public static void askAI(String prompt, java.util.function.Consumer<String> callback) {
         new Thread(() -> {
             try {

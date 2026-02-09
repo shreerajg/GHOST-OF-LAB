@@ -37,8 +37,10 @@ public class StudentDashboard {
     private static Label notificationLabel;
     private static Circle statusDot;
     private static Label statusLabel;
+    private static String currentUsername;
 
     public static void show(Stage stage, User user) {
+        currentUsername = user.getUsername();
         // Create downloads folder
         new File(downloadFolder).mkdirs();
 
@@ -306,7 +308,7 @@ public class StudentDashboard {
             String msg = input.getText();
             if (!msg.isEmpty()) {
                 chatArea.appendText("[YOU]: " + msg + "\n");
-                client.sendMessage(new CommandPacket(CommandPacket.Type.MSG, "STUDENT", msg));
+                client.sendMessage(new CommandPacket(CommandPacket.Type.MSG, currentUsername, msg));
                 input.clear();
             }
         });
@@ -513,11 +515,13 @@ public class StudentDashboard {
                     break;
                 case MSG:
                     if (chatArea != null) {
-                        chatArea.appendText("[ADMIN]: " + packet.getPayload() + "\n");
+                        String sender = packet.getSender();
+                        String prefix = "ADMIN".equalsIgnoreCase(sender) ? "[ADMIN]" : "[" + sender + "]";
+                        chatArea.appendText(prefix + ": " + packet.getPayload() + "\n");
                     }
                     // Show notification if chat panel is closed
                     if (!chatPanel.isVisible()) {
-                        showNotification("💬 New message from Admin");
+                        showNotification("💬 New message from " + packet.getSender());
                     }
                     break;
                 case ADMIN_SCREEN:
@@ -580,7 +584,27 @@ public class StudentDashboard {
                     }
                     break;
                 case NOTIFICATION:
-                    showNotification(packet.getPayload());
+                    String notifPayload = packet.getPayload();
+                    if ("CONNECTED".equals(notifPayload)) {
+                        // Update status to connected
+                        if (statusDot != null)
+                            statusDot.setFill(Color.web("#00ff00"));
+                        if (statusLabel != null)
+                            statusLabel.setText("● Connected to Admin");
+                        showNotification("✅ Connected to Admin!");
+                    } else if (notifPayload != null && notifPayload.contains("disconnected")) {
+                        // Update status to disconnected
+                        if (statusDot != null)
+                            statusDot.setFill(Color.web("#e74c3c"));
+                        if (statusLabel != null)
+                            statusLabel.setText("● Disconnected");
+                        showNotification(notifPayload);
+                        // Clear stream view and show waiting label
+                        if (streamView != null)
+                            streamView.setImage(null);
+                    } else {
+                        showNotification(notifPayload);
+                    }
                     break;
                 default:
                     break;

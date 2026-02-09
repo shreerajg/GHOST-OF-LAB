@@ -24,6 +24,9 @@ public class GhostServer {
 
     public interface ScreenUpdateListener {
         void onScreenUpdate(String clientName, String base64Image);
+
+        default void onShellOutput(String clientName, String output) {
+        }
     }
 
     public interface ClientStatusListener {
@@ -63,6 +66,18 @@ public class GhostServer {
         String json = gson.toJson(packet);
         for (ClientHandler c : clients) {
             c.send(json);
+        }
+    }
+
+    /**
+     * Broadcast to all clients except the sender (for LAN chat)
+     */
+    private void broadcastExcept(CommandPacket packet, ClientHandler sender) {
+        String json = gson.toJson(packet);
+        for (ClientHandler c : clients) {
+            if (c != sender) {
+                c.send(json);
+            }
         }
     }
 
@@ -142,8 +157,15 @@ public class GhostServer {
                         screenListener.onScreenUpdate(clientName, packet.getPayload());
                     }
                     break;
+                case SHELL_OUTPUT:
+                    // Forward command output to admin terminal
+                    if (screenListener != null) {
+                        screenListener.onShellOutput(clientName, packet.getPayload());
+                    }
+                    break;
                 case MSG:
-                    // Forward to admin or handle
+                    // Forward student messages to all other students (LAN chat)
+                    broadcastExcept(packet, this);
                     break;
                 default:
                     break;

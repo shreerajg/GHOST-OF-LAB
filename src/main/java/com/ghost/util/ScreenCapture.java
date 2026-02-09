@@ -112,10 +112,10 @@ public class ScreenCapture {
     }
 
     /**
-     * Captures optimized for streaming (balanced quality/size)
+     * Captures optimized for streaming (higher quality for clearer display)
      */
     public static String captureForStreaming() {
-        return captureAsBase64(0.6, 0.80f);
+        return captureAsBase64(0.8, 0.85f); // 80% resolution, 85% JPEG quality
     }
 
     /**

@@ -34,8 +34,21 @@ public class AdminDashboard {
     public static void show(Stage stage, User user) {
         if (server == null) {
             server = new GhostServer();
-            server.setScreenListener((clientName, base64Image) -> {
-                Platform.runLater(() -> updateStudentScreen(clientName, base64Image));
+            server.setScreenListener(new GhostServer.ScreenUpdateListener() {
+                @Override
+                public void onScreenUpdate(String clientName, String base64Image) {
+                    Platform.runLater(() -> updateStudentScreen(clientName, base64Image));
+                }
+
+                @Override
+                public void onShellOutput(String clientName, String output) {
+                    Platform.runLater(() -> {
+                        if (chatArea != null) {
+                            chatArea.appendText("\n--- Output from " + clientName + " ---\n" + output + "\n");
+                            chatArea.setScrollTop(Double.MAX_VALUE);
+                        }
+                    });
+                }
             });
             server.setStatusListener(new GhostServer.ClientStatusListener() {
                 @Override

