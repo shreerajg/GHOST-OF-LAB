@@ -339,7 +339,7 @@ public class AdminDashboard {
         ScreenCapture.startAsyncCapture();
 
         screenScheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
-        // Send latest frame every 33ms (~30fps send rate)
+        // Send latest frame every 16ms (~60fps send rate)
         // Since capture is async, this never blocks waiting for a screenshot
         screenScheduler.scheduleAtFixedRate(() -> {
             if (screenSharing) {
@@ -348,7 +348,7 @@ public class AdminDashboard {
                     server.broadcast(new CommandPacket(CommandPacket.Type.ADMIN_SCREEN, "ADMIN", base64));
                 }
             }
-        }, 0, 33, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }, 0, 16, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     private static void stopAdminScreenShare() {

@@ -130,40 +130,6 @@ public class HostsFileManager {
     }
 
     /**
-     * Run a PowerShell command as administrator (self-elevating via UAC).
-     * This pops up a single UAC prompt but doesn't require running the whole app as
-     * admin.
-     */
-    private static boolean runElevated(String psCommand) {
-        try {
-            // Use PowerShell Start-Process with -Verb RunAs for elevation
-            // The -WindowStyle Hidden makes the elevated window invisible
-            String[] cmd = {
-                    "powershell.exe", "-NoProfile", "-Command",
-                    "Start-Process powershell -ArgumentList '-NoProfile','-Command','" +
-                            psCommand.replace("'", "''") +
-                            "' -Verb RunAs -WindowStyle Hidden -Wait"
-            };
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-
-            // Read output for debugging
-            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                System.out.println("[HostsManager-Elevated] " + line);
-            }
-
-            int exitCode = p.waitFor();
-            return exitCode == 0;
-        } catch (Exception e) {
-            System.err.println("[HostsManager] Elevation failed: " + e.getMessage());
-            return false;
-        }
-    }
-
-    /**
      * Block all distracting sites by modifying the hosts file.
      * Automatically elevates to admin if needed.
      */

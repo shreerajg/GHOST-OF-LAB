@@ -175,8 +175,8 @@ public class ScreenCapture {
                     if (frame != null) {
                         latestFrame.set(frame);
                     }
-                    // ~30fps capture rate, send rate can be different
-                    Thread.sleep(33);
+                    // Target 60fps (16ms per frame). Capture takes time, so sleep less.
+                    Thread.sleep(5);
                 } catch (InterruptedException e) {
                     break;
                 } catch (Exception e) {
