@@ -8,8 +8,9 @@ import java.nio.file.*;
  * Uses hosts file redirects (127.0.0.1) instead of disabling network adapters,
  * so the LAN connection between admin and students stays intact.
  * 
- * Includes a comprehensive blocklist of non-educational sites.
- * Automatically backs up and restores the original hosts file.
+ * SELF-ELEVATING: If not running as admin, automatically launches an elevated
+ * PowerShell process to modify the hosts file. No need to run the whole app as
+ * admin.
  */
 public class HostsFileManager {
     private static final String HOSTS_PATH = "C:\\Windows\\System32\\drivers\\etc\\hosts";
@@ -21,7 +22,6 @@ public class HostsFileManager {
 
     /**
      * Comprehensive list of non-educational/distracting sites to block.
-     * Each domain is blocked along with its www. variant.
      */
     private static final String[] BLOCKED_DOMAINS = {
             // Social Media
@@ -38,8 +38,7 @@ public class HostsFileManager {
 
             // Video/Streaming
             "youtube.com", "www.youtube.com",
-            "m.youtube.com",
-            "youtu.be",
+            "m.youtube.com", "youtu.be",
             "netflix.com", "www.netflix.com",
             "twitch.tv", "www.twitch.tv",
             "hotstar.com", "www.hotstar.com",
@@ -89,13 +88,13 @@ public class HostsFileManager {
             "dream11.com", "www.dream11.com",
             "bet365.com", "www.bet365.com",
 
-            // Adult content (basic blocks)
+            // Adult content
             "pornhub.com", "www.pornhub.com",
             "xvideos.com", "www.xvideos.com",
             "xnxx.com", "www.xnxx.com",
             "xhamster.com", "www.xhamster.com",
 
-            // Music streaming (optional - distracting)
+            // Music streaming
             "spotify.com", "www.spotify.com", "open.spotify.com",
             "gaana.com", "www.gaana.com",
             "jiosaavn.com", "www.jiosaavn.com",
@@ -104,73 +103,218 @@ public class HostsFileManager {
     };
 
     /**
+     * Check if we have write access to the hosts file.
+     */
+    private static boolean canWriteHostsFile() {
+        try {
+            Path hostsPath = Paths.get(HOSTS_PATH);
+            // Try to open for writing to test access
+            return Files.isWritable(hostsPath);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Build the block entries string for the hosts file.
+     */
+    private static String buildBlockEntries() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n").append(GHOST_MARKER_START).append("\n");
+        sb.append("# Blocked by Ghost Lab Management - DO NOT EDIT\n");
+        for (String domain : BLOCKED_DOMAINS) {
+            sb.append("127.0.0.1 ").append(domain).append("\n");
+        }
+        sb.append(GHOST_MARKER_END).append("\n");
+        return sb.toString();
+    }
+
+    /**
+     * Run a PowerShell command as administrator (self-elevating via UAC).
+     * This pops up a single UAC prompt but doesn't require running the whole app as
+     * admin.
+     */
+    private static boolean runElevated(String psCommand) {
+        try {
+            // Use PowerShell Start-Process with -Verb RunAs for elevation
+            // The -WindowStyle Hidden makes the elevated window invisible
+            String[] cmd = {
+                    "powershell.exe", "-NoProfile", "-Command",
+                    "Start-Process powershell -ArgumentList '-NoProfile','-Command','" +
+                            psCommand.replace("'", "''") +
+                            "' -Verb RunAs -WindowStyle Hidden -Wait"
+            };
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+
+            // Read output for debugging
+            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println("[HostsManager-Elevated] " + line);
+            }
+
+            int exitCode = p.waitFor();
+            return exitCode == 0;
+        } catch (Exception e) {
+            System.err.println("[HostsManager] Elevation failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Block all distracting sites by modifying the hosts file.
-     * Backs up the original hosts file first.
+     * Automatically elevates to admin if needed.
      */
     public static synchronized boolean blockSites() {
         try {
             Path hostsPath = Paths.get(HOSTS_PATH);
-            Path backupPath = Paths.get(BACKUP_PATH);
 
-            // Read current hosts file
+            // Check if already blocked
             String currentContent = new String(Files.readAllBytes(hostsPath));
-
-            // Don't add duplicates - if our markers already exist, skip
             if (currentContent.contains(GHOST_MARKER_START)) {
                 System.out.println("[HostsManager] Sites already blocked");
                 blocked = true;
                 return true;
             }
 
-            // Backup original hosts file (only if backup doesn't exist)
+            if (canWriteHostsFile()) {
+                // Direct write (app has admin rights)
+                return blockSitesDirect();
+            } else {
+                // Self-elevate via PowerShell
+                System.out.println("[HostsManager] Elevating to modify hosts file...");
+                return blockSitesElevated();
+            }
+        } catch (IOException e) {
+            System.err.println("[HostsManager] Error: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Direct write (when running as admin)
+     */
+    private static boolean blockSitesDirect() {
+        try {
+            Path hostsPath = Paths.get(HOSTS_PATH);
+            Path backupPath = Paths.get(BACKUP_PATH);
+
+            // Backup original
             if (!Files.exists(backupPath)) {
                 Files.copy(hostsPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
-                System.out.println("[HostsManager] Backed up original hosts file");
             }
 
-            // Build block entries
-            StringBuilder blockEntries = new StringBuilder();
-            blockEntries.append("\n").append(GHOST_MARKER_START).append("\n");
-            blockEntries.append("# Blocked by Ghost Lab Management - DO NOT EDIT\n");
-            for (String domain : BLOCKED_DOMAINS) {
-                blockEntries.append("127.0.0.1 ").append(domain).append("\n");
-            }
-            blockEntries.append(GHOST_MARKER_END).append("\n");
+            // Append block entries
+            Files.write(hostsPath, buildBlockEntries().getBytes(), StandardOpenOption.APPEND);
 
-            // Append to hosts file
-            Files.write(hostsPath, blockEntries.toString().getBytes(),
-                    StandardOpenOption.APPEND);
-
-            // Flush DNS cache
             flushDns();
-
             blocked = true;
             System.out.println("[HostsManager] Blocked " + BLOCKED_DOMAINS.length + " domains");
             return true;
-
         } catch (IOException e) {
-            System.err.println("[HostsManager] Error blocking sites: " + e.getMessage());
-            System.err.println("[HostsManager] Make sure app is running as Administrator!");
+            System.err.println("[HostsManager] Direct write error: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Elevated write (when NOT running as admin)
+     * Creates a temp script, runs it with admin elevation via PowerShell.
+     */
+    private static boolean blockSitesElevated() {
+        try {
+            // Create a temp PowerShell script with all the blocking logic
+            Path tempScript = Files.createTempFile("ghost_block_", ".ps1");
+            StringBuilder ps = new StringBuilder();
+
+            // Backup original hosts file
+            ps.append("$hostsPath = '").append(HOSTS_PATH).append("'\n");
+            ps.append("$backupPath = '").append(BACKUP_PATH).append("'\n");
+            ps.append("if (-not (Test-Path $backupPath)) { Copy-Item $hostsPath $backupPath }\n");
+
+            // Append block entries
+            ps.append("$entries = @\"\n");
+            ps.append(buildBlockEntries());
+            ps.append("\"@\n");
+            ps.append("Add-Content -Path $hostsPath -Value $entries -Encoding ASCII\n");
+
+            // Flush DNS
+            ps.append("ipconfig /flushdns | Out-Null\n");
+
+            Files.write(tempScript, ps.toString().getBytes());
+
+            // Run the script elevated
+            String[] cmd = {
+                    "powershell.exe", "-NoProfile", "-Command",
+                    "Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','" +
+                            tempScript.toAbsolutePath().toString() +
+                            "' -Verb RunAs -WindowStyle Hidden -Wait"
+            };
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            p.waitFor();
+
+            // Cleanup temp script
+            Files.deleteIfExists(tempScript);
+
+            // Verify it worked
+            String content = new String(Files.readAllBytes(Paths.get(HOSTS_PATH)));
+            if (content.contains(GHOST_MARKER_START)) {
+                blocked = true;
+                System.out.println("[HostsManager] Blocked " + BLOCKED_DOMAINS.length + " domains (elevated)");
+                return true;
+            } else {
+                System.err.println("[HostsManager] Elevation may have been denied by user");
+                return false;
+            }
+        } catch (Exception e) {
+            System.err.println("[HostsManager] Elevated block error: " + e.getMessage());
             return false;
         }
     }
 
     /**
      * Restore the original hosts file by removing Ghost's block entries.
-     * This is safe to call even if no blocking was active.
+     * Automatically elevates to admin if needed.
      */
     public static synchronized boolean restoreHostsFile() {
+        try {
+            // Quick check: anything to restore?
+            String content = new String(Files.readAllBytes(Paths.get(HOSTS_PATH)));
+            if (!content.contains(GHOST_MARKER_START) && !Files.exists(Paths.get(BACKUP_PATH))) {
+                blocked = false;
+                return true; // Nothing to restore
+            }
+
+            if (canWriteHostsFile()) {
+                return restoreDirect();
+            } else {
+                System.out.println("[HostsManager] Elevating to restore hosts file...");
+                return restoreElevated();
+            }
+        } catch (IOException e) {
+            System.err.println("[HostsManager] Error: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Direct restore (when running as admin)
+     */
+    private static boolean restoreDirect() {
         try {
             Path hostsPath = Paths.get(HOSTS_PATH);
             Path backupPath = Paths.get(BACKUP_PATH);
 
-            // Method 1: If backup exists, restore from backup
             if (Files.exists(backupPath)) {
                 Files.copy(backupPath, hostsPath, StandardCopyOption.REPLACE_EXISTING);
                 Files.deleteIfExists(backupPath);
-                System.out.println("[HostsManager] Restored hosts file from backup");
+                System.out.println("[HostsManager] Restored from backup");
             } else {
-                // Method 2: Remove Ghost markers from hosts file
+                // Remove markers manually
                 String content = new String(Files.readAllBytes(hostsPath));
                 if (content.contains(GHOST_MARKER_START)) {
                     int startIdx = content.indexOf(GHOST_MARKER_START);
@@ -178,24 +322,77 @@ public class HostsFileManager {
                     if (endIdx > startIdx) {
                         String cleaned = content.substring(0, startIdx)
                                 + content.substring(endIdx + GHOST_MARKER_END.length());
-                        // Remove trailing newlines left behind
                         cleaned = cleaned.replaceAll("\\n{3,}", "\n\n");
                         Files.write(hostsPath, cleaned.getBytes());
-                        System.out.println("[HostsManager] Removed Ghost block entries from hosts file");
                     }
-                } else {
-                    System.out.println("[HostsManager] No Ghost entries found in hosts file - nothing to restore");
                 }
             }
 
-            // Flush DNS cache
             flushDns();
-
             blocked = false;
             return true;
-
         } catch (IOException e) {
-            System.err.println("[HostsManager] Error restoring hosts file: " + e.getMessage());
+            System.err.println("[HostsManager] Direct restore error: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Elevated restore (when NOT running as admin)
+     */
+    private static boolean restoreElevated() {
+        try {
+            Path tempScript = Files.createTempFile("ghost_restore_", ".ps1");
+            StringBuilder ps = new StringBuilder();
+
+            ps.append("$hostsPath = '").append(HOSTS_PATH).append("'\n");
+            ps.append("$backupPath = '").append(BACKUP_PATH).append("'\n");
+            ps.append("if (Test-Path $backupPath) {\n");
+            ps.append("    Copy-Item $backupPath $hostsPath -Force\n");
+            ps.append("    Remove-Item $backupPath -Force\n");
+            ps.append("} else {\n");
+            ps.append("    $content = Get-Content $hostsPath -Raw\n");
+            ps.append("    $startMarker = '").append(GHOST_MARKER_START).append("'\n");
+            ps.append("    $endMarker = '").append(GHOST_MARKER_END).append("'\n");
+            ps.append("    if ($content -match [regex]::Escape($startMarker)) {\n");
+            ps.append("        $startIdx = $content.IndexOf($startMarker)\n");
+            ps.append("        $endIdx = $content.IndexOf($endMarker)\n");
+            ps.append("        if ($endIdx -gt $startIdx) {\n");
+            ps.append(
+                    "            $cleaned = $content.Substring(0, $startIdx) + $content.Substring($endIdx + $endMarker.Length)\n");
+            ps.append("            Set-Content -Path $hostsPath -Value $cleaned -NoNewline\n");
+            ps.append("        }\n");
+            ps.append("    }\n");
+            ps.append("}\n");
+            ps.append("ipconfig /flushdns | Out-Null\n");
+
+            Files.write(tempScript, ps.toString().getBytes());
+
+            String[] cmd = {
+                    "powershell.exe", "-NoProfile", "-Command",
+                    "Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','" +
+                            tempScript.toAbsolutePath().toString() +
+                            "' -Verb RunAs -WindowStyle Hidden -Wait"
+            };
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            p.waitFor();
+
+            Files.deleteIfExists(tempScript);
+
+            // Verify
+            String content = new String(Files.readAllBytes(Paths.get(HOSTS_PATH)));
+            if (!content.contains(GHOST_MARKER_START)) {
+                blocked = false;
+                System.out.println("[HostsManager] Hosts file restored (elevated)");
+                return true;
+            } else {
+                System.err.println("[HostsManager] Restore elevation may have been denied");
+                return false;
+            }
+        } catch (Exception e) {
+            System.err.println("[HostsManager] Elevated restore error: " + e.getMessage());
             return false;
         }
     }
@@ -209,22 +406,17 @@ public class HostsFileManager {
             pb.redirectErrorStream(true);
             Process p = pb.start();
             p.waitFor();
-            System.out.println("[HostsManager] DNS cache flushed");
         } catch (Exception e) {
             System.err.println("[HostsManager] Failed to flush DNS: " + e.getMessage());
         }
     }
 
-    /**
-     * Returns whether sites are currently blocked.
-     */
     public static boolean isBlocked() {
         return blocked;
     }
 
     /**
-     * Check if the hosts file currently has Ghost entries.
-     * Useful on startup to detect leftover blocks from a crash.
+     * Check if the hosts file has leftover Ghost entries (e.g. from a crash).
      */
     public static boolean hasLeftoverBlocks() {
         try {

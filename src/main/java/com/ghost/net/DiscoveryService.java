@@ -123,7 +123,7 @@ public class DiscoveryService {
 
         new Thread(() -> {
             byte[] buffer = new byte[256];
-            System.out.println("Discovery: Listening for Admin server (continuous)...");
+            String lastFoundIp = null;
 
             while (running.get()) {
                 try {
@@ -142,7 +142,11 @@ public class DiscoveryService {
                                 serverIp = "127.0.0.1";
                             }
 
-                            System.out.println("Discovery: Found Admin at " + serverIp + ":" + port);
+                            // Only log when IP changes or first discovery
+                            if (!serverIp.equals(lastFoundIp)) {
+                                System.out.println("Discovery: Found Admin at " + serverIp + ":" + port);
+                                lastFoundIp = serverIp;
+                            }
 
                             if (listener != null) {
                                 listener.onServerFound(serverIp, port);

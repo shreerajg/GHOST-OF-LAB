@@ -5,12 +5,13 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import javax.imageio.*;
 import javax.imageio.stream.ImageOutputStream;
-import javax.imageio.plugins.jpeg.JPEGImageWriteParam;
 import java.util.Base64;
 import java.util.Iterator;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * High-performance screen capture utility with quality control
+ * High-performance screen capture utility with mouse cursor rendering
+ * and async double-buffering for smooth streaming.
  */
 public class ScreenCapture {
     private static Robot robot;
@@ -18,16 +19,43 @@ public class ScreenCapture {
     private static BufferedImage reusableBuffer;
     private static Graphics2D reusableGraphics;
 
+    // Async double-buffer: capture happens in background, latest frame always ready
+    private static final AtomicReference<String> latestFrame = new AtomicReference<>(null);
+    private static volatile boolean asyncRunning = false;
+
     // Quality presets
-    public static final double QUALITY_LOW = 0.3; // Fast, small files
-    public static final double QUALITY_MEDIUM = 0.5; // Balanced
-    public static final double QUALITY_HIGH = 0.7; // Good quality
-    public static final double QUALITY_ULTRA = 0.9; // Best quality
+    public static final double QUALITY_LOW = 0.3;
+    public static final double QUALITY_MEDIUM = 0.5;
+    public static final double QUALITY_HIGH = 0.7;
+    public static final double QUALITY_ULTRA = 0.9;
+
+    // Mouse cursor image (drawn manually since Robot doesn't capture it)
+    private static final int[][] CURSOR_SHAPE = {
+            { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+            { 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+            { 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+            { 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0 },
+            { 1, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0 },
+            { 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0 },
+            { 1, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0 },
+            { 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0 },
+            { 1, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0 },
+            { 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0 },
+            { 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0 },
+            { 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1 },
+            { 1, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1 },
+            { 1, 2, 2, 2, 1, 2, 2, 1, 0, 0, 0, 0 },
+            { 1, 2, 2, 1, 0, 1, 2, 2, 1, 0, 0, 0 },
+            { 1, 2, 1, 0, 0, 1, 2, 2, 1, 0, 0, 0 },
+            { 1, 1, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0 },
+            { 1, 0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0 },
+            { 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0 },
+    };
 
     static {
         try {
             robot = new Robot();
-            robot.setAutoDelay(0); // No delay for faster captures
+            robot.setAutoDelay(0);
             screenRect = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
         } catch (AWTException e) {
             e.printStackTrace();
@@ -35,32 +63,42 @@ public class ScreenCapture {
     }
 
     /**
-     * Captures the screen with configurable resolution scale
-     * 
-     * @param resolutionScale Scale factor (0.1 to 1.0) for resolution
-     * @return Base64 encoded JPEG string
+     * Draw the mouse cursor onto the captured image.
      */
-    public static String captureAsBase64(double resolutionScale) {
-        return captureAsBase64(resolutionScale, 0.85f); // Default 85% JPEG quality
+    private static void drawMouseCursor(Graphics2D g, double scaleX, double scaleY) {
+        try {
+            Point mousePos = MouseInfo.getPointerInfo().getLocation();
+            int mx = (int) (mousePos.x * scaleX);
+            int my = (int) (mousePos.y * scaleY);
+
+            for (int row = 0; row < CURSOR_SHAPE.length; row++) {
+                for (int col = 0; col < CURSOR_SHAPE[row].length; col++) {
+                    int val = CURSOR_SHAPE[row][col];
+                    if (val == 1) {
+                        g.setColor(Color.BLACK);
+                        g.fillRect(mx + col, my + row, 1, 1);
+                    } else if (val == 2) {
+                        g.setColor(Color.WHITE);
+                        g.fillRect(mx + col, my + row, 1, 1);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Ignore cursor drawing errors (e.g. no mouse info available)
+        }
     }
 
     /**
-     * Captures the screen with configurable resolution and JPEG quality
-     * 
-     * @param resolutionScale Scale factor (0.1 to 1.0) for resolution
-     * @param jpegQuality     JPEG compression quality (0.0 to 1.0)
-     * @return Base64 encoded JPEG string
+     * Captures the screen with configurable resolution and JPEG quality.
+     * Now includes the mouse cursor in the capture.
      */
     public static String captureAsBase64(double resolutionScale, float jpegQuality) {
         try {
-            // Capture screen
             BufferedImage capture = robot.createScreenCapture(screenRect);
 
-            // Calculate target dimensions
             int newWidth = (int) (capture.getWidth() * resolutionScale);
             int newHeight = (int) (capture.getHeight() * resolutionScale);
 
-            // Reuse buffer if same size, otherwise create new
             if (reusableBuffer == null || reusableBuffer.getWidth() != newWidth
                     || reusableBuffer.getHeight() != newHeight) {
                 if (reusableGraphics != null)
@@ -75,10 +113,12 @@ public class ScreenCapture {
             // Scale into reusable buffer
             reusableGraphics.drawImage(capture, 0, 0, newWidth, newHeight, null);
 
-            // Encode with quality control
-            ByteArrayOutputStream baos = new ByteArrayOutputStream(50000); // Pre-allocate
+            // Draw mouse cursor on top
+            drawMouseCursor(reusableGraphics, resolutionScale, resolutionScale);
 
-            // Use ImageWriter for quality control
+            // Encode with quality control
+            ByteArrayOutputStream baos = new ByteArrayOutputStream(50000);
+
             Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
             if (writers.hasNext()) {
                 ImageWriter writer = writers.next();
@@ -92,7 +132,6 @@ public class ScreenCapture {
                 writer.dispose();
                 ios.close();
             } else {
-                // Fallback
                 ImageIO.write(reusableBuffer, "jpg", baos);
             }
 
@@ -104,18 +143,65 @@ public class ScreenCapture {
         }
     }
 
-    /**
-     * Captures at maximum quality (full resolution, high JPEG quality)
-     */
+    public static String captureAsBase64(double resolutionScale) {
+        return captureAsBase64(resolutionScale, 0.85f);
+    }
+
     public static String captureHighQuality() {
         return captureAsBase64(1.0, 0.95f);
     }
 
     /**
-     * Captures optimized for streaming (higher quality for clearer display)
+     * Captures optimized for streaming (with mouse cursor)
      */
     public static String captureForStreaming() {
-        return captureAsBase64(0.8, 0.85f); // 80% resolution, 85% JPEG quality
+        return captureAsBase64(0.8, 0.85f);
+    }
+
+    /**
+     * Start async capture loop. Captures frames in the background continuously.
+     * Call getLatestFrame() to get the most recent captured frame.
+     * This provides smooth streaming by decoupling capture from send.
+     */
+    public static void startAsyncCapture() {
+        if (asyncRunning)
+            return;
+        asyncRunning = true;
+
+        Thread captureThread = new Thread(() -> {
+            while (asyncRunning) {
+                try {
+                    String frame = captureForStreaming();
+                    if (frame != null) {
+                        latestFrame.set(frame);
+                    }
+                    // ~30fps capture rate, send rate can be different
+                    Thread.sleep(33);
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Exception e) {
+                    // Keep running on errors
+                }
+            }
+        }, "AsyncScreenCapture");
+        captureThread.setDaemon(true);
+        captureThread.start();
+    }
+
+    /**
+     * Stop async capture loop.
+     */
+    public static void stopAsyncCapture() {
+        asyncRunning = false;
+        latestFrame.set(null);
+    }
+
+    /**
+     * Get the latest captured frame (from async capture).
+     * Returns null if no frame is captured yet.
+     */
+    public static String getLatestFrame() {
+        return latestFrame.get();
     }
 
     /**
@@ -131,11 +217,7 @@ public class ScreenCapture {
         }
     }
 
-    /**
-     * Returns estimated bytes per frame at given settings
-     */
     public static int estimateFrameSize(double resolutionScale, float jpegQuality) {
-        // Rough estimate: base resolution * scale^2 * quality factor
         int baseSize = screenRect.width * screenRect.height;
         return (int) (baseSize * resolutionScale * resolutionScale * jpegQuality * 0.15);
     }
