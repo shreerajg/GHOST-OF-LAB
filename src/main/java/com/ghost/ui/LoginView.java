@@ -32,6 +32,10 @@ public class LoginView {
         Label statusLbl = new Label("");
         statusLbl.setStyle("-fx-text-fill: red;");
 
+        // Add keyboard navigation after all components declared
+        userField.setOnAction(e -> funcField.requestFocus()); // Enter moves to password
+        funcField.setOnAction(e -> loginBtn.fire()); // Enter submits login
+
         loginBtn.setOnAction(e -> {
             String user = userField.getText();
             String pass = funcField.getText();

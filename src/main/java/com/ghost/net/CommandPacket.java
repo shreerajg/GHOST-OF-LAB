@@ -3,7 +3,8 @@ package com.ghost.net;
 public class CommandPacket {
     public enum Type {
         CONNECT, DISCONNECT, LOCK, UNLOCK, SHUTDOWN, RESTART, MSG, SCREEN_DATA,
-        INTERNET, SHELL, SHELL_OUTPUT, FILE_DATA, ADMIN_SCREEN, NOTIFICATION, MUTE, BLOCK_INPUT
+        INTERNET, SHELL, SHELL_OUTPUT, FILE_DATA, ADMIN_SCREEN, NOTIFICATION,
+        SCREENSHOT_ALL, OPEN_URL
     }
 
     private Type type;

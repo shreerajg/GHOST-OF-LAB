@@ -102,7 +102,25 @@ public class AdminDashboard {
         userBox.getChildren().addAll(avatar, userName, roleLabel);
 
         // Control Sections
-        VBox controlSection = createControlSection("POWER CONTROLS",
+        VBox controlSection = createControlSection("ADMIN CONTROLS",
+                createStyledButton("🌐 BLOCK INTERNET", internetKilled ? "#666" : "#e74c3c",
+                        () -> {
+                            if (!internetKilled) {
+                                HostsFileManager.blockSites();
+                                internetKilled = true;
+                            }
+                        }),
+                createStyledButton("✅ UNBLOCK INTERNET", !internetKilled ? "#666" : "#27ae60",
+                        () -> {
+                            if (internetKilled) {
+                                HostsFileManager.restoreHostsFile();
+                                internetKilled = false;
+                            }
+                        }),
+                createStyledButton("📊 GENERATE ATTENDANCE", "#3498db",
+                        () -> generateAttendanceManually(stage)));
+
+        VBox networkSection = createControlSection("POWER CONTROLS",
                 createStyledButton("🔒 LOCK ALL", "#e74c3c",
                         () -> server.broadcast(new CommandPacket(CommandPacket.Type.LOCK, "ADMIN", "{}"))),
                 createStyledButton("🔓 UNLOCK ALL", "#2ecc71",
@@ -110,19 +128,16 @@ public class AdminDashboard {
                 createStyledButton("⏻ SHUTDOWN ALL", "#9b59b6",
                         () -> server.broadcast(new CommandPacket(CommandPacket.Type.SHUTDOWN, "ADMIN", "{}"))));
 
-        VBox networkSection = createControlSection("NETWORK",
-                createNetworkToggle());
-
         VBox streamSection = createControlSection("SCREEN SHARE",
                 createScreenShareToggle());
 
-        VBox extraSection = createControlSection("EXTRAS",
-                createStyledButton("🔇 MUTE ALL", "#f39c12",
-                        () -> server.broadcast(new CommandPacket(CommandPacket.Type.MUTE, "ADMIN", "{}"))),
-                createStyledButton("🖐️ BLOCK INPUT", "#e67e22",
-                        () -> server.broadcast(new CommandPacket(CommandPacket.Type.BLOCK_INPUT, "ADMIN", "BLOCK"))),
-                createStyledButton("✋ UNBLOCK INPUT", "#27ae60",
-                        () -> server.broadcast(new CommandPacket(CommandPacket.Type.BLOCK_INPUT, "ADMIN", "UNBLOCK"))));
+        VBox extraSection = createControlSection("ADMIN TOOLS",
+                createStyledButton("📸 SCREENSHOT ALL", "#f39c12",
+                        () -> captureAllScreenshots(stage)),
+                createStyledButton("🔄 RESTART ALL", "#e67e22",
+                        () -> server.broadcast(new CommandPacket(CommandPacket.Type.RESTART, "ADMIN", "{}"))),
+                createStyledButton("🌐 OPEN URL", "#27ae60",
+                        () -> openUrlOnAll()));
 
         VBox fileSection = createControlSection("FILE SHARING",
                 createStyledButton("📁 SEND FILES", "#3498db", () -> sendFilesToStudents(stage)));
@@ -226,18 +241,33 @@ public class AdminDashboard {
         console.getChildren().addAll(prompt, cmdInput, execBtn);
         root.setBottom(console);
 
-        Scene scene = new Scene(root, 1200, 800);
+        Scene scene = new Scene(root, 1200, 700);
         stage.setScene(scene);
-        stage.setTitle("Ghost - Admin Control Center");
+        stage.setTitle("Ghost Admin - " + user.getUsername());
+        stage.setMaximized(true);
 
         // Initialize system tray for admin
         SystemTrayManager.init(stage, "ADMIN", user);
 
-        // Minimize to tray instead of exit
+        // Minimize to tray instead of exit, but export attendance first
         stage.setOnCloseRequest(e -> {
             e.consume(); // Prevent default close
+
+            // Export attendance CSV
+            System.out.println("[Admin] Exporting attendance...");
+            java.util.List<String> files = com.ghost.util.AttendanceTracker.generateAttendanceCSV();
+            if (!files.isEmpty()) {
+                System.out.println("[Admin] Attendance exported to:");
+                for (String file : files) {
+                    System.out.println("  - " + file);
+                }
+            }
+
+            // Then hide to tray
             SystemTrayManager.hideWindow();
         });
+
+        stage.show();
     }
 
     private static VBox createControlSection(String title, javafx.scene.Node... controls) {
@@ -549,5 +579,119 @@ public class AdminDashboard {
         });
         updateThread.setDaemon(true);
         updateThread.start();
+    }
+
+    /**
+     * Capture screenshots from all connected students and save to disk
+     */
+    private static void captureAllScreenshots(Stage stage) {
+        if (studentImages.isEmpty()) {
+            if (chatArea != null) {
+                chatArea.appendText("[SYSTEM]: No students connected\n");
+            }
+            return;
+        }
+
+        // Create screenshots folder
+        File screenshotsDir = new File(System.getProperty("user.home"), "Ghost Screenshots");
+        screenshotsDir.mkdirs();
+
+        String timestamp = new java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss").format(new java.util.Date());
+
+        for (Map.Entry<String, ImageView> entry : studentImages.entrySet()) {
+            String studentName = entry.getKey();
+            ImageView imgView = entry.getValue();
+            Image image = imgView.getImage();
+
+            if (image != null) {
+                try {
+                    File outputFile = new File(screenshotsDir, studentName + "_" + timestamp + ".png");
+                    // Use JavaFX's built-in image writing
+                    java.nio.file.Files.write(outputFile.toPath(), imageToPngBytes(image));
+
+                    if (chatArea != null) {
+                        chatArea.appendText("[SCREENSHOT]: Saved " + studentName + "\n");
+                    }
+                } catch (Exception e) {
+                    if (chatArea != null) {
+                        chatArea.appendText("[ERROR]: Failed to save " + studentName + ": " + e.getMessage() + "\n");
+                    }
+                }
+            }
+        }
+
+        if (chatArea != null) {
+            chatArea.appendText("[SYSTEM]: Screenshots saved to: " + screenshotsDir.getAbsolutePath() + "\n");
+        }
+    }
+
+    /**
+     * Convert JavaFX Image to PNG bytes
+     */
+    private static byte[] imageToPngBytes(Image image) throws Exception {
+        java.awt.image.BufferedImage bImage = new java.awt.image.BufferedImage(
+                (int) image.getWidth(),
+                (int) image.getHeight(),
+                java.awt.image.BufferedImage.TYPE_INT_ARGB);
+
+        // Read pixels from JavaFX Image
+        javafx.scene.image.PixelReader pixelReader = image.getPixelReader();
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                bImage.setRGB(x, y, pixelReader.getArgb(x, y));
+            }
+        }
+
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(bImage, "png", baos);
+        return baos.toByteArray();
+    }
+
+    /**
+     * Open a URL on all student browsers
+     */
+    private static void openUrlOnAll() {
+        TextInputDialog dialog = new TextInputDialog("https://");
+        dialog.setTitle("Open URL on All Students");
+        dialog.setHeaderText("Enter URL to open on all student computers");
+        dialog.setContentText("URL:");
+
+        dialog.showAndWait().ifPresent(url -> {
+            if (!url.trim().isEmpty()) {
+                server.broadcast(new CommandPacket(CommandPacket.Type.OPEN_URL, "ADMIN", url));
+                if (chatArea != null) {
+                    chatArea.appendText("[SYSTEM]: Opening URL on all students: " + url + "\n");
+                }
+            }
+        });
+    }
+
+    private static void generateAttendanceManually(Stage stage) {
+        System.out.println("[Admin] Manually generating attendance...");
+        java.util.List<String> files = com.ghost.util.AttendanceTracker.generateAttendanceCSV();
+
+        if (files.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Attendance Export");
+            alert.setHeaderText("No Students Connected");
+            alert.setContentText("No students have connected yet. Attendance sheet will be empty.");
+            alert.showAndWait();
+        } else {
+            StringBuilder fileList = new StringBuilder("Attendance exported to:\n\n");
+            for (String file : files) {
+                fileList.append("📄 ").append(file).append("\n");
+            }
+
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Attendance Export");
+            alert.setHeaderText("Attendance Generated Successfully!");
+            alert.setContentText(fileList.toString());
+            alert.showAndWait();
+
+            System.out.println("[Admin] Attendance exported to:");
+            for (String file : files) {
+                System.out.println("  - " + file);
+            }
+        }
     }
 }

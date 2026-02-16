@@ -47,22 +47,24 @@ public class StudentDashboard {
         // Create downloads folder
         new File(downloadFolder).mkdirs();
 
-        if (client == null) {
-            // Use auto-discovery to find admin instead of hardcoded IP
-            discoveryService = new DiscoveryService();
-            discoveryService.setListener((serverIp, port) -> {
-                if (client == null) {
-                    System.out.println("Student: Auto-discovered Admin at " + serverIp + ":" + port);
-                    client = new GhostClient(serverIp);
-                    client.setListener(packet -> handleCommand(packet));
-                    client.connect();
-                } else {
-                    // Admin IP may have changed - update client
-                    client.updateAdminIp(serverIp);
-                }
-            });
-            discoveryService.startListening();
-        }
+        // Initialize Discovery Service to auto-find Admin
+        discoveryService = new DiscoveryService();
+
+        // Wait for discovery to find admin before connecting
+        discoveryService.setListener((serverIp, port) -> {
+            if (client == null) {
+                // First discovery - initialize and connect client
+                System.out.println("Discovery: Found Admin at " + serverIp + ":" + port);
+                client = new GhostClient(serverIp, user);
+                client.setListener(packet -> handleCommand(packet));
+                client.connect();
+            } else {
+                // Admin IP changed - update existing client
+                System.out.println("Discovery: Admin IP updated to " + serverIp);
+                client.updateAdminIp(serverIp);
+            }
+        });
+        discoveryService.startListening();
 
         root = new StackPane();
         root.setStyle("-fx-background-color: linear-gradient(to bottom right, #0f0f1f, #1a1a3e);");
@@ -162,6 +164,7 @@ public class StudentDashboard {
         applyTheme(scene, currentTheme);
         stage.setScene(scene);
         stage.setTitle("Ghost - Student Interface");
+        stage.setMaximized(true); // Maximize after login
 
         // Initialize system tray for student (forced background mode)
         SystemTrayManager.init(stage, "STUDENT", user);
@@ -174,6 +177,8 @@ public class StudentDashboard {
             // Client connection and screen capture threads remain active
             System.out.println("[Student] Minimized to tray - still monitored by Admin");
         });
+
+        stage.show();
     }
 
     private static HBox createHeader(User user, Stage stage) {
@@ -601,19 +606,6 @@ public class StudentDashboard {
                         showNotification("🌐 Sites unblocked - Internet restored");
                     }
                     break;
-                case MUTE:
-                    PythonBridge.execute("mute");
-                    showNotification("🔇 Audio muted by Admin");
-                    break;
-                case BLOCK_INPUT:
-                    if ("BLOCK".equals(packet.getPayload())) {
-                        PythonBridge.execute("block_input");
-                        showNotification("🖐️ Input blocked by Admin");
-                    } else {
-                        PythonBridge.execute("unblock_input");
-                        showNotification("✋ Input unblocked");
-                    }
-                    break;
                 case NOTIFICATION:
                     String notifPayload = packet.getPayload();
                     if ("CONNECTED".equals(notifPayload)) {
@@ -635,6 +627,24 @@ public class StudentDashboard {
                             streamView.setImage(null);
                     } else {
                         showNotification(notifPayload);
+                    }
+                    break;
+                case OPEN_URL:
+                    // Open URL in default browser
+                    String url = packet.getPayload();
+                    try {
+                        String os = System.getProperty("os.name").toLowerCase();
+                        if (os.contains("win")) {
+                            Runtime.getRuntime().exec("cmd /c start " + url);
+                        } else if (os.contains("mac")) {
+                            Runtime.getRuntime().exec("open " + url);
+                        } else if (os.contains("nix") || os.contains("nux")) {
+                            Runtime.getRuntime().exec("xdg-open " + url);
+                        }
+                        showNotification("🔗 Opening URL: " + url);
+                    } catch (Exception e) {
+                        System.err.println("[Student] Error opening URL: " + e.getMessage());
+                        showNotification("❌ Failed to open URL: " + url);
                     }
                     break;
                 default:

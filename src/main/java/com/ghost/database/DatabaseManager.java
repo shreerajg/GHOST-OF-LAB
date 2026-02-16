@@ -15,17 +15,51 @@ public class DatabaseManager {
                         "username TEXT UNIQUE NOT NULL, " +
                         "password TEXT NOT NULL, " +
                         "role TEXT NOT NULL, " +
-                        "meta TEXT" +
+                        "meta TEXT, " +
+                        "roll_number INTEGER DEFAULT 0, " +
+                        "class_name TEXT DEFAULT '', " +
+                        "division TEXT DEFAULT ''" +
                         ");";
                 try (Statement stmt = conn.createStatement()) {
                     stmt.execute(sql);
                 }
+
+                // Migration: Add new columns if they don't exist (for existing databases)
+                migrateSchema(conn);
 
                 // Create default admin if not exists
                 createDefaultAdmin(conn);
             }
         } catch (SQLException e) {
             System.err.println("Database initialization failed: " + e.getMessage());
+        }
+    }
+
+    private static void migrateSchema(Connection conn) {
+        try (Statement stmt = conn.createStatement()) {
+            // Check if columns exist and add if missing
+            try {
+                stmt.execute("ALTER TABLE users ADD COLUMN roll_number INTEGER DEFAULT 0");
+                System.out.println("Added roll_number column to users table");
+            } catch (SQLException e) {
+                // Column already exists, ignore
+            }
+
+            try {
+                stmt.execute("ALTER TABLE users ADD COLUMN class_name TEXT DEFAULT ''");
+                System.out.println("Added class_name column to users table");
+            } catch (SQLException e) {
+                // Column already exists, ignore
+            }
+
+            try {
+                stmt.execute("ALTER TABLE users ADD COLUMN division TEXT DEFAULT ''");
+                System.out.println("Added division column to users table");
+            } catch (SQLException e) {
+                // Column already exists, ignore
+            }
+        } catch (SQLException e) {
+            System.err.println("Schema migration error: " + e.getMessage());
         }
     }
 
@@ -56,12 +90,16 @@ public class DatabaseManager {
 
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
-                    return new User(
+                    User user = new User(
                             rs.getInt("id"),
                             rs.getString("username"),
                             rs.getString("password"),
                             rs.getString("role"),
-                            rs.getString("meta"));
+                            rs.getString("meta"),
+                            rs.getInt("roll_number"),
+                            rs.getString("class_name"),
+                            rs.getString("division"));
+                    return user;
                 }
             }
         } catch (SQLException e) {
@@ -70,14 +108,19 @@ public class DatabaseManager {
         return null; // Login failed
     }
 
-    public static boolean registerStudent(String username, String password, String meta) {
-        String sql = "INSERT INTO users(username, password, role, meta) VALUES(?, ?, 'STUDENT', ?)";
+    public static boolean registerStudent(String username, String password, String meta,
+            int rollNumber, String className, String division) {
+        String sql = "INSERT INTO users(username, password, role, meta, roll_number, class_name, division) " +
+                "VALUES(?, ?, 'STUDENT', ?, ?, ?, ?)";
         try (Connection conn = DriverManager.getConnection(Config.DB_URL);
                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setString(1, username);
             pstmt.setString(2, password);
             pstmt.setString(3, meta);
+            pstmt.setInt(4, rollNumber);
+            pstmt.setString(5, className);
+            pstmt.setString(6, division);
             pstmt.executeUpdate();
             return true;
         } catch (SQLException e) {

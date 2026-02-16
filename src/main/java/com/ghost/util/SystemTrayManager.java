@@ -182,6 +182,18 @@ public class SystemTrayManager {
      */
     private static void exitApplication() {
         try {
+            // For admin, export attendance before exiting
+            if ("ADMIN".equals(userRole)) {
+                System.out.println("[Admin] Exporting attendance before exit...");
+                java.util.List<String> files = AttendanceTracker.generateAttendanceCSV();
+                if (!files.isEmpty()) {
+                    System.out.println("[Admin] Attendance exported to:");
+                    for (String file : files) {
+                        System.out.println("  - " + file);
+                    }
+                }
+            }
+
             // Remove tray icon
             if (tray != null && trayIcon != null) {
                 tray.remove(trayIcon);

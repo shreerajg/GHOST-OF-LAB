@@ -1,5 +1,6 @@
 package com.ghost.net;
 
+import com.ghost.database.User;
 import com.ghost.util.Config;
 import com.ghost.util.HostsFileManager;
 import com.ghost.util.ScreenCapture;
@@ -18,6 +19,7 @@ public class GhostClient {
     private BufferedReader in;
     private Gson gson = new Gson();
     private String adminIp;
+    private User studentUser; // Store student info
     private CommandListener listener;
     private ScheduledExecutorService screenScheduler;
     private boolean sendingScreens = true;
@@ -27,8 +29,9 @@ public class GhostClient {
         void onCommand(CommandPacket packet);
     }
 
-    public GhostClient(String adminIp) {
+    public GhostClient(String adminIp, User studentUser) {
         this.adminIp = adminIp;
+        this.studentUser = studentUser;
     }
 
     /**
@@ -69,9 +72,15 @@ public class GhostClient {
                         listener.onCommand(new CommandPacket(CommandPacket.Type.NOTIFICATION, "SYSTEM", "CONNECTED"));
                     }
 
-                    // Send Initial Handshake
+                    // Send Initial Handshake with student info JSON
+                    String studentInfo = String.format(
+                            "{\"username\":\"%s\",\"roll\":%d,\"class\":\"%s\",\"division\":\"%s\"}",
+                            studentUser.getUsername(),
+                            studentUser.getRollNumber(),
+                            studentUser.getClassName(),
+                            studentUser.getDivision());
                     CommandPacket verify = new CommandPacket(CommandPacket.Type.CONNECT,
-                            System.getProperty("user.name"), "{}");
+                            studentUser.getUsername(), studentInfo);
                     out.println(gson.toJson(verify));
 
                     // Start screen capture thread
@@ -178,12 +187,19 @@ public class GhostClient {
                     }
                     break;
                 case SHUTDOWN:
-                    // Shutdown directly without Python
-                    executeDirectCommand("shutdown /s /t 0");
+                    // Shutdown
+                    Runtime.getRuntime().exec("shutdown /s /t 5");
                     break;
                 case RESTART:
-                    // Restart directly without Python
-                    executeDirectCommand("shutdown /r /t 0");
+                    Runtime.getRuntime().exec("shutdown /r /t 5");
+                    break;
+                case OPEN_URL:
+                    // Open URL in default browser
+                    String url = packet.getPayload();
+                    String os = System.getProperty("os.name").toLowerCase();
+                    if (os.contains("win")) {
+                        Runtime.getRuntime().exec("cmd /c start " + url);
+                    }
                     break;
                 case INTERNET:
                     // Use HostsFileManager (no Python dependency, keeps LAN alive)
@@ -191,23 +207,6 @@ public class GhostClient {
                         HostsFileManager.blockSites();
                     } else {
                         HostsFileManager.restoreHostsFile();
-                    }
-                    break;
-                case MUTE:
-                    // Mute audio - try PowerShell directly
-                    executeDirectCommand(
-                            "powershell -Command \"(New-Object -ComObject WScript.Shell).SendKeys([char]173)\"");
-                    break;
-                case BLOCK_INPUT:
-                    // Block input requires Python (admin privileges)
-                    try {
-                        if ("BLOCK".equals(packet.getPayload())) {
-                            PythonBridge.execute("block_input");
-                        } else {
-                            PythonBridge.execute("unblock_input");
-                        }
-                    } catch (Exception e) {
-                        System.out.println("Input control requires Python with admin: " + e.getMessage());
                     }
                     break;
                 case SHELL:

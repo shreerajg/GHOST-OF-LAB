@@ -147,7 +147,24 @@ public class GhostServer {
                 case CONNECT:
                     clientName = packet.getSender();
                     clientsByName.put(clientName, this);
-                    System.out.println("Client connected: " + clientName);
+
+                    // Parse student info from payload JSON
+                    try {
+                        com.google.gson.JsonObject studentInfo = gson.fromJson(packet.getPayload(),
+                                com.google.gson.JsonObject.class);
+                        int roll = studentInfo.has("roll") ? studentInfo.get("roll").getAsInt() : 0;
+                        String className = studentInfo.has("class") ? studentInfo.get("class").getAsString() : "";
+                        String division = studentInfo.has("division") ? studentInfo.get("division").getAsString() : "";
+
+                        // Record attendance
+                        com.ghost.util.AttendanceTracker.recordConnection(clientName, roll, className, division);
+
+                        System.out.println("Client connected: " + clientName + " (Roll: " + roll + ", " + className
+                                + division + ")");
+                    } catch (Exception e) {
+                        // Fallback for old clients without student info
+                        System.out.println("Client connected: " + clientName);
+                    }
 
                     // Notify listener of connection
                     if (statusListener != null) {

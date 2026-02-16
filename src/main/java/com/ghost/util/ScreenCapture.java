@@ -124,8 +124,8 @@ public class ScreenCapture {
                 ImageWriter writer = writers.next();
                 ImageWriteParam param = writer.getDefaultWriteParam();
                 param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-                param.setCompressionQuality(jpegQuality);
-
+                // Quality 0.8 for admin→student (high quality for better clarity)
+                param.setCompressionQuality(0.8f);
                 ImageOutputStream ios = ImageIO.createImageOutputStream(baos);
                 writer.setOutput(ios);
                 writer.write(null, new IIOImage(reusableBuffer, null, null), param);
