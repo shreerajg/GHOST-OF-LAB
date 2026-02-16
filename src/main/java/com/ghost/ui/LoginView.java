@@ -26,9 +26,6 @@ public class LoginView {
         PasswordField funcField = new PasswordField();
         funcField.setPromptText("Password");
 
-        CheckBox rememberMe = new CheckBox("Remember Me");
-        rememberMe.setStyle("-fx-text-fill: white;");
-
         Button loginBtn = new Button("Login");
         loginBtn.setStyle("-fx-background-color: #007acc; -fx-text-fill: white;");
 
@@ -41,12 +38,6 @@ public class LoginView {
 
             User u = DatabaseManager.login(user, pass);
             if (u != null) {
-                if (rememberMe.isSelected()) {
-                    com.ghost.util.SessionManager.saveSession(user, pass);
-                } else {
-                    com.ghost.util.SessionManager.clearSession();
-                }
-
                 if ("ADMIN".equalsIgnoreCase(u.getRole())) {
                     AdminDashboard.show(stage, u);
                 } else {
@@ -61,7 +52,7 @@ public class LoginView {
         registerStudentBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #aaa; -fx-underline: true;");
         registerStudentBtn.setOnAction(e -> StudentRegistrationView.show(stage));
 
-        root.getChildren().addAll(title, userField, funcField, rememberMe, loginBtn, statusLbl, registerStudentBtn);
+        root.getChildren().addAll(title, userField, funcField, loginBtn, statusLbl, registerStudentBtn);
 
         Scene scene = new Scene(root, 400, 350);
         stage.setScene(scene);

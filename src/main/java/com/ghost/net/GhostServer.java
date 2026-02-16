@@ -15,7 +15,9 @@ import java.util.concurrent.Executors;
 public class GhostServer {
     private ServerSocket serverSocket;
     private boolean running = false;
-    private ExecutorService pool = Executors.newCachedThreadPool();
+    // Use fixed thread pool (4 threads) for better CPU allocation across 2 cores
+    // This prevents excessive thread creation and leaves CPU for user's side tasks
+    private ExecutorService pool = Executors.newFixedThreadPool(4);
     private List<ClientHandler> clients = new ArrayList<>();
     private Map<String, ClientHandler> clientsByName = new HashMap<>();
     private Gson gson = new Gson();

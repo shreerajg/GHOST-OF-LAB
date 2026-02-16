@@ -152,10 +152,12 @@ public class ScreenCapture {
     }
 
     /**
-     * Captures optimized for streaming (with mouse cursor)
+     * Captures optimized for LAN streaming (100% resolution, 80% quality)
      */
     public static String captureForStreaming() {
-        return captureAsBase64(0.8, 0.85f);
+        // Optimized for 40fps streaming (reduced from 0.80 to 0.75 for better
+        // performance)
+        return captureAsBase64(1.0, 0.75f);
     }
 
     /**
@@ -175,8 +177,9 @@ public class ScreenCapture {
                     if (frame != null) {
                         latestFrame.set(frame);
                     }
-                    // Target 60fps (16ms per frame). Capture takes time, so sleep less.
-                    Thread.sleep(5);
+                    // Target 40fps (25ms per frame) for smoother, stable streaming
+                    // Reduced from 60fps to lower CPU usage and allow side tasks
+                    Thread.sleep(15);
                 } catch (InterruptedException e) {
                     break;
                 } catch (Exception e) {
@@ -185,6 +188,8 @@ public class ScreenCapture {
             }
         }, "AsyncScreenCapture");
         captureThread.setDaemon(true);
+        // Set lower priority to leave CPU for user's side tasks
+        captureThread.setPriority(Thread.NORM_PRIORITY - 1);
         captureThread.start();
     }
 
