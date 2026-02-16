@@ -39,16 +39,15 @@ public class DiscoveryService {
                 socket = new DatagramSocket();
                 socket.setBroadcast(true);
 
-                System.out.println("Discovery: Broadcasting on port " + DISCOVERY_PORT);
+                String localIp = getLocalIp();
+                System.out.println("Discovery: Broadcasting on port " + DISCOVERY_PORT + " (IP: " + localIp + ")");
 
                 while (running.get()) {
                     try {
                         // Get current local IP (may change with hotspot/network switches)
-                        String localIp = getLocalIp();
+                        localIp = getLocalIp();
                         String message = BROADCAST_MESSAGE + ":" + Config.SERVER_PORT + ":" + localIp;
                         byte[] data = message.getBytes();
-
-                        System.out.println("Discovery: Broadcasting Server IP = " + localIp);
 
                         // Broadcast to 255.255.255.255 (global broadcast)
                         DatagramPacket packet = new DatagramPacket(
@@ -154,8 +153,7 @@ public class DiscoveryService {
                         }
                     }
                 } catch (SocketTimeoutException e) {
-                    // Normal timeout - keep listening
-                    System.out.println("Discovery: Still searching for Admin...");
+                    // Normal timeout - keep listening silently
                 } catch (InterruptedException e) {
                     break;
                 } catch (IOException e) {
