@@ -2,8 +2,9 @@ package com.ghost.ui;
 
 import com.ghost.database.User;
 import com.ghost.net.CommandPacket;
+import com.ghost.net.DiscoveryService;
 import com.ghost.net.GhostClient;
-import com.ghost.util.Config;
+import com.ghost.util.HostsFileManager;
 import com.ghost.util.PythonBridge;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -25,6 +26,7 @@ import java.util.Base64;
 
 public class StudentDashboard {
     private static GhostClient client;
+    private static DiscoveryService discoveryService;
     private static StackPane root;
     private static VBox lockOverlay;
     private static ImageView streamView;
@@ -45,9 +47,20 @@ public class StudentDashboard {
         new File(downloadFolder).mkdirs();
 
         if (client == null) {
-            client = new GhostClient(Config.ADMIN_IP);
-            client.setListener(packet -> handleCommand(packet));
-            client.connect();
+            // Use auto-discovery to find admin instead of hardcoded IP
+            discoveryService = new DiscoveryService();
+            discoveryService.setListener((serverIp, port) -> {
+                if (client == null) {
+                    System.out.println("Student: Auto-discovered Admin at " + serverIp + ":" + port);
+                    client = new GhostClient(serverIp);
+                    client.setListener(packet -> handleCommand(packet));
+                    client.connect();
+                } else {
+                    // Admin IP may have changed - update client
+                    client.updateAdminIp(serverIp);
+                }
+            });
+            discoveryService.startListening();
         }
 
         root = new StackPane();
@@ -148,7 +161,11 @@ public class StudentDashboard {
         applyTheme(scene, currentTheme);
         stage.setScene(scene);
         stage.setTitle("Ghost - Student Interface");
-        stage.setOnCloseRequest(e -> System.exit(0));
+        stage.setOnCloseRequest(e -> {
+            // CRITICAL: Restore hosts file before closing so student doesn't lose internet
+            HostsFileManager.restoreHostsFile();
+            System.exit(0);
+        });
     }
 
     private static HBox createHeader(User user, Stage stage) {
@@ -569,11 +586,11 @@ public class StudentDashboard {
                     break;
                 case INTERNET:
                     if ("DISABLE".equals(packet.getPayload())) {
-                        PythonBridge.execute("kill_net");
-                        showNotification("🌐 Internet disabled by Admin");
+                        HostsFileManager.blockSites();
+                        showNotification("🌐 Distracting sites blocked by Admin");
                     } else {
-                        PythonBridge.execute("restore_net");
-                        showNotification("🌐 Internet restored");
+                        HostsFileManager.restoreHostsFile();
+                        showNotification("🌐 Sites unblocked - Internet restored");
                     }
                     break;
                 case MUTE:

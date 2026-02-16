@@ -2,7 +2,9 @@ package com.ghost.ui;
 
 import com.ghost.database.User;
 import com.ghost.net.CommandPacket;
+import com.ghost.net.DiscoveryService;
 import com.ghost.net.GhostServer;
+import com.ghost.util.HostsFileManager;
 import com.ghost.util.ScreenCapture;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -24,6 +26,7 @@ import java.util.Map;
 
 public class AdminDashboard {
     private static GhostServer server;
+    private static DiscoveryService discoveryService;
     private static FlowPane thumbnailGrid;
     private static VBox chatBox;
     private static TextArea chatArea;
@@ -62,6 +65,11 @@ public class AdminDashboard {
                 }
             });
             server.start();
+
+            // Start broadcasting so students can auto-discover this server
+            discoveryService = new DiscoveryService();
+            discoveryService.startBroadcasting();
+            System.out.println("Admin: Auto-discovery broadcasting started");
         }
 
         BorderPane root = new BorderPane();
@@ -268,8 +276,10 @@ public class AdminDashboard {
                 toggle.setText("RESTORE");
                 toggle.setStyle(
                         "-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 15;");
-                statusLabel.setText("● OFFLINE");
+                statusLabel.setText("● SITES BLOCKED");
                 statusLabel.setStyle("-fx-text-fill: #e74c3c; -fx-font-weight: bold;");
+                // Block sites on admin PC too and broadcast to students
+                HostsFileManager.blockSites();
                 server.broadcast(new CommandPacket(CommandPacket.Type.INTERNET, "ADMIN", "DISABLE"));
             } else {
                 toggle.setText("KILL");
@@ -277,6 +287,8 @@ public class AdminDashboard {
                         "-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 15;");
                 statusLabel.setText("● ONLINE");
                 statusLabel.setStyle("-fx-text-fill: #2ecc71; -fx-font-weight: bold;");
+                // Restore hosts file on admin and broadcast to students
+                HostsFileManager.restoreHostsFile();
                 server.broadcast(new CommandPacket(CommandPacket.Type.INTERNET, "ADMIN", "ENABLE"));
             }
         });

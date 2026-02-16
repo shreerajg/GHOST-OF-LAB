@@ -7,7 +7,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * UDP-based server discovery service.
- * Admin broadcasts its presence, Students listen and auto-connect.
+ * Admin broadcasts its presence on ALL network interfaces.
+ * Students listen continuously and auto-connect, even if IP changes.
  */
 public class DiscoveryService {
     private static final int DISCOVERY_PORT = 5556;
@@ -27,7 +28,9 @@ public class DiscoveryService {
     }
 
     /**
-     * Start broadcasting server presence (called by Admin)
+     * Start broadcasting server presence (called by Admin).
+     * Broadcasts on ALL active network interfaces for maximum compatibility
+     * (works with Ethernet, Wi-Fi, and mobile hotspot simultaneously).
      */
     public void startBroadcasting() {
         running.set(true);
@@ -36,27 +39,38 @@ public class DiscoveryService {
                 socket = new DatagramSocket();
                 socket.setBroadcast(true);
 
-                String localIp = getLocalIp();
-                String message = BROADCAST_MESSAGE + ":" + Config.SERVER_PORT + ":" + localIp;
-                byte[] data = message.getBytes();
-
                 System.out.println("Discovery: Broadcasting on port " + DISCOVERY_PORT);
-                System.out.println("Discovery: Server IP = " + localIp);
 
                 while (running.get()) {
                     try {
-                        // Broadcast to 255.255.255.255
+                        // Get current local IP (may change with hotspot/network switches)
+                        String localIp = getLocalIp();
+                        String message = BROADCAST_MESSAGE + ":" + Config.SERVER_PORT + ":" + localIp;
+                        byte[] data = message.getBytes();
+
+                        System.out.println("Discovery: Broadcasting Server IP = " + localIp);
+
+                        // Broadcast to 255.255.255.255 (global broadcast)
                         DatagramPacket packet = new DatagramPacket(
                                 data, data.length,
                                 InetAddress.getByName("255.255.255.255"),
                                 DISCOVERY_PORT);
                         socket.send(packet);
 
-                        // Also broadcast to subnet broadcast address
-                        InetAddress broadcastAddr = getBroadcastAddress();
-                        if (broadcastAddr != null) {
-                            packet = new DatagramPacket(data, data.length, broadcastAddr, DISCOVERY_PORT);
-                            socket.send(packet);
+                        // Broadcast to ALL subnet broadcast addresses (covers all interfaces)
+                        java.util.Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+                        while (interfaces.hasMoreElements()) {
+                            NetworkInterface iface = interfaces.nextElement();
+                            if (iface.isLoopback() || !iface.isUp())
+                                continue;
+
+                            for (InterfaceAddress ifAddr : iface.getInterfaceAddresses()) {
+                                InetAddress broadcast = ifAddr.getBroadcast();
+                                if (broadcast != null) {
+                                    packet = new DatagramPacket(data, data.length, broadcast, DISCOVERY_PORT);
+                                    socket.send(packet);
+                                }
+                            }
                         }
 
                         // Also broadcast to localhost for same-machine testing
@@ -67,6 +81,13 @@ public class DiscoveryService {
                         Thread.sleep(BROADCAST_INTERVAL_MS);
                     } catch (InterruptedException e) {
                         break;
+                    } catch (IOException e) {
+                        System.err.println("Discovery broadcast send error: " + e.getMessage());
+                        try {
+                            Thread.sleep(BROADCAST_INTERVAL_MS);
+                        } catch (InterruptedException ie) {
+                            break;
+                        }
                     }
                 }
             } catch (IOException e) {
@@ -79,10 +100,11 @@ public class DiscoveryService {
     }
 
     /**
-     * Start listening for server broadcasts (called by Student)
-     * Returns quickly if can't bind (allows fallback to localhost)
+     * Start listening for server broadcasts (called by Student).
+     * Runs CONTINUOUSLY - keeps listening even after finding the server
+     * so it can detect IP changes when admin switches networks.
      */
-    public boolean startListening() {
+    public void startListening() {
         running.set(true);
 
         try {
@@ -90,24 +112,21 @@ public class DiscoveryService {
             socket.setReuseAddress(true);
             socket.bind(new InetSocketAddress(DISCOVERY_PORT));
             socket.setBroadcast(true);
-            socket.setSoTimeout(3000); // 3 second timeout
+            socket.setSoTimeout(5000); // 5 second timeout per attempt
         } catch (IOException e) {
             System.err.println("Discovery: Cannot bind to port " + DISCOVERY_PORT + " - trying localhost fallback");
             // Port in use (likely by Admin on same machine), use localhost
             if (listener != null) {
                 listener.onServerFound("127.0.0.1", Config.SERVER_PORT);
             }
-            return false;
+            return;
         }
 
         new Thread(() -> {
             byte[] buffer = new byte[256];
-            System.out.println("Discovery: Listening for Admin server...");
+            System.out.println("Discovery: Listening for Admin server (continuous)...");
 
-            int attempts = 0;
-            int maxAttempts = 5; // Try for 15 seconds max
-
-            while (running.get() && attempts < maxAttempts) {
+            while (running.get()) {
                 try {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
@@ -129,12 +148,16 @@ public class DiscoveryService {
                             if (listener != null) {
                                 listener.onServerFound(serverIp, port);
                             }
-                            return; // Stop listening once found
+
+                            // Keep listening but sleep a bit to avoid spamming
+                            Thread.sleep(BROADCAST_INTERVAL_MS);
                         }
                     }
                 } catch (SocketTimeoutException e) {
-                    attempts++;
-                    System.out.println("Discovery: No response, attempt " + attempts + "/" + maxAttempts);
+                    // Normal timeout - keep listening
+                    System.out.println("Discovery: Still searching for Admin...");
+                } catch (InterruptedException e) {
+                    break;
                 } catch (IOException e) {
                     if (running.get()) {
                         System.err.println("Discovery error: " + e.getMessage());
@@ -142,16 +165,7 @@ public class DiscoveryService {
                     break;
                 }
             }
-
-            // Timeout - fallback to localhost
-            if (running.get() && listener != null) {
-                System.out.println("Discovery: Timeout, falling back to localhost");
-                listener.onServerFound("127.0.0.1", Config.SERVER_PORT);
-            }
-
         }, "DiscoveryListener").start();
-
-        return true;
     }
 
     public void stop() {
@@ -162,7 +176,8 @@ public class DiscoveryService {
     }
 
     /**
-     * Get local IP address (not loopback)
+     * Get local IP address (not loopback).
+     * Scans all active network interfaces.
      */
     public static String getLocalIp() {
         try {
@@ -185,29 +200,5 @@ public class DiscoveryService {
             e.printStackTrace();
         }
         return "127.0.0.1";
-    }
-
-    /**
-     * Get broadcast address for local network
-     */
-    private InetAddress getBroadcastAddress() {
-        try {
-            java.util.Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-            while (interfaces.hasMoreElements()) {
-                NetworkInterface iface = interfaces.nextElement();
-                if (iface.isLoopback() || !iface.isUp())
-                    continue;
-
-                for (InterfaceAddress ifAddr : iface.getInterfaceAddresses()) {
-                    InetAddress broadcast = ifAddr.getBroadcast();
-                    if (broadcast != null) {
-                        return broadcast;
-                    }
-                }
-            }
-        } catch (SocketException e) {
-            e.printStackTrace();
-        }
-        return null;
     }
 }

@@ -1,6 +1,7 @@
 package com.ghost.net;
 
 import com.ghost.util.Config;
+import com.ghost.util.HostsFileManager;
 import com.ghost.util.ScreenCapture;
 import com.ghost.util.PythonBridge;
 import com.google.gson.Gson;
@@ -28,6 +29,23 @@ public class GhostClient {
 
     public GhostClient(String adminIp) {
         this.adminIp = adminIp;
+    }
+
+    /**
+     * Update the admin IP address when the network changes.
+     * Forces a reconnect if the IP is different.
+     */
+    public void updateAdminIp(String newIp) {
+        if (!newIp.equals(this.adminIp)) {
+            System.out.println("[GhostClient] Admin IP changed: " + this.adminIp + " -> " + newIp);
+            this.adminIp = newIp;
+            // Force reconnect by closing current socket
+            try {
+                if (socket != null)
+                    socket.close();
+            } catch (Exception e) {
+            }
+        }
     }
 
     public void setListener(CommandListener listener) {
@@ -168,15 +186,11 @@ public class GhostClient {
                     executeDirectCommand("shutdown /r /t 0");
                     break;
                 case INTERNET:
-                    // Network control requires Python for now
-                    try {
-                        if ("DISABLE".equals(packet.getPayload())) {
-                            PythonBridge.execute("kill_net");
-                        } else {
-                            PythonBridge.execute("restore_net");
-                        }
-                    } catch (Exception e) {
-                        System.out.println("Network control requires Python: " + e.getMessage());
+                    // Use HostsFileManager (no Python dependency, keeps LAN alive)
+                    if ("DISABLE".equals(packet.getPayload())) {
+                        HostsFileManager.blockSites();
+                    } else {
+                        HostsFileManager.restoreHostsFile();
                     }
                     break;
                 case MUTE:
