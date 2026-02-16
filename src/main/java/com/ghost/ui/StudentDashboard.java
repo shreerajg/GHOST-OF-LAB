@@ -6,6 +6,7 @@ import com.ghost.net.DiscoveryService;
 import com.ghost.net.GhostClient;
 import com.ghost.util.HostsFileManager;
 import com.ghost.util.PythonBridge;
+import com.ghost.util.SystemTrayManager;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -161,10 +162,17 @@ public class StudentDashboard {
         applyTheme(scene, currentTheme);
         stage.setScene(scene);
         stage.setTitle("Ghost - Student Interface");
+
+        // Initialize system tray for student (forced background mode)
+        SystemTrayManager.init(stage, "STUDENT", user);
+
+        // Force minimize to tray on window close (don't allow exit)
+        // Client connection and screen capture continue in background
         stage.setOnCloseRequest(e -> {
-            // CRITICAL: Restore hosts file before closing so student doesn't lose internet
-            HostsFileManager.restoreHostsFile();
-            System.exit(0);
+            e.consume(); // Prevent actual exit
+            SystemTrayManager.hideWindow();
+            // Client connection and screen capture threads remain active
+            System.out.println("[Student] Minimized to tray - still monitored by Admin");
         });
     }
 

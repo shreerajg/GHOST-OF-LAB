@@ -6,6 +6,7 @@ import com.ghost.net.DiscoveryService;
 import com.ghost.net.GhostServer;
 import com.ghost.util.HostsFileManager;
 import com.ghost.util.ScreenCapture;
+import com.ghost.util.SystemTrayManager;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -228,7 +229,15 @@ public class AdminDashboard {
         Scene scene = new Scene(root, 1200, 800);
         stage.setScene(scene);
         stage.setTitle("Ghost - Admin Control Center");
-        stage.setOnCloseRequest(e -> System.exit(0));
+
+        // Initialize system tray for admin
+        SystemTrayManager.init(stage, "ADMIN", user);
+
+        // Minimize to tray instead of exit
+        stage.setOnCloseRequest(e -> {
+            e.consume(); // Prevent default close
+            SystemTrayManager.hideWindow();
+        });
     }
 
     private static VBox createControlSection(String title, javafx.scene.Node... controls) {

@@ -4,12 +4,17 @@ import com.ghost.database.DatabaseManager;
 import com.ghost.ui.LoginView;
 import com.ghost.util.HostsFileManager;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.stage.Stage;
 
 public class Main extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        // Prevent JavaFX from exiting when all windows are hidden (needed for system
+        // tray)
+        Platform.setImplicitExit(false);
+
         // Initialize Database
         DatabaseManager.init();
 
