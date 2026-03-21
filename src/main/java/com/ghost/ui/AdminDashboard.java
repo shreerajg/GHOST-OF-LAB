@@ -92,6 +92,20 @@ public class AdminDashboard {
         Label subtitle = new Label("COMMANDER");
         subtitle.setStyle("-fx-font-size: 12px; -fx-text-fill: #888; -fx-letter-spacing: 3px;");
 
+        // Dev signature — sits beneath COMMANDER, part of the system identity
+        Label adminSig = new Label("ghost of lab  ·  dev: shreerajG");
+        adminSig.setStyle(
+                "-fx-font-family: 'JetBrains Mono', 'Consolas', 'Inter', monospace;" +
+                "-fx-font-size: 9px;" +
+                "-fx-text-fill: rgba(180, 210, 255, 0.55);" +
+                "-fx-letter-spacing: 1px;" +
+                "-fx-font-weight: normal;"
+        );
+        adminSig.setAlignment(Pos.CENTER);
+        adminSig.setMaxWidth(Double.MAX_VALUE);
+        adminSig.setOpacity(0);
+        adminSig.setMouseTransparent(true);
+
         // User info
         VBox userBox = new VBox(5);
         userBox.setAlignment(Pos.CENTER);
@@ -146,7 +160,7 @@ public class AdminDashboard {
 
         // Use ScrollPane for sidebar to handle overflow
         VBox sidebarContent = new VBox(10);
-        sidebarContent.getChildren().addAll(logo, subtitle, new Separator(), userBox, new Separator(),
+        sidebarContent.getChildren().addAll(logo, subtitle, adminSig, new Separator(), userBox, new Separator(),
                 controlSection, networkSection, streamSection, extraSection, fileSection);
 
         ScrollPane sidebarScroll = new ScrollPane(sidebarContent);
@@ -243,39 +257,17 @@ public class AdminDashboard {
         console.getChildren().addAll(prompt, cmdInput, execBtn);
         root.setBottom(console);
 
-        // ========== ADMIN DEV SIGNATURE — bottom-right, frosted pill badge ==========
-        Label adminSig = new Label("ghost of lab  ·  dev: shreerajG");
-        adminSig.setStyle(
-                "-fx-font-family: 'JetBrains Mono', 'Consolas', 'Inter', monospace;" +
-                "-fx-font-size: 11px;" +
-                "-fx-text-fill: rgba(200, 220, 255, 0.80);" +
-                "-fx-letter-spacing: 1.4px;" +
-                "-fx-font-weight: normal;" +
-                "-fx-padding: 5 14 5 14;" +
-                "-fx-background-color: rgba(0, 10, 30, 0.55);" +
-                "-fx-background-radius: 20;" +
-                "-fx-border-color: rgba(150, 190, 255, 0.18);" +
-                "-fx-border-radius: 20;" +
-                "-fx-border-width: 1;" +
-                "-fx-effect: dropshadow(gaussian, rgba(100, 160, 255, 0.20), 10, 0.1, 0, 0);"
-        );
-        adminSig.setOpacity(0);
-        adminSig.setMouseTransparent(true);
+        // ========== ADMIN DEV SIGNATURE — fade-in after scene is ready ==========
+        Scene scene = new Scene(root, 1200, 700);
 
-        StackPane adminRoot = new StackPane(root, adminSig);
-        StackPane.setAlignment(adminSig, Pos.BOTTOM_RIGHT);
-        StackPane.setMargin(adminSig, new Insets(0, 20, 14, 0));
-
-        Scene scene = new Scene(adminRoot, 1200, 700);
-
-        // Startup fade-in: 0 → 1, settle at 0.72 (clean, not distracting)
+        // Startup fade-in: 0 → 1, settle at 0.55 (subtle, part of the system)
         FadeTransition aFadeIn = new FadeTransition(Duration.millis(1200), adminSig);
         aFadeIn.setFromValue(0.0);
         aFadeIn.setToValue(1.0);
         aFadeIn.setOnFinished(evt -> {
-            FadeTransition aFadeDown = new FadeTransition(Duration.millis(600), adminSig);
+            FadeTransition aFadeDown = new FadeTransition(Duration.millis(700), adminSig);
             aFadeDown.setFromValue(1.0);
-            aFadeDown.setToValue(0.72);
+            aFadeDown.setToValue(0.55);
             aFadeDown.play();
         });
         aFadeIn.play();
