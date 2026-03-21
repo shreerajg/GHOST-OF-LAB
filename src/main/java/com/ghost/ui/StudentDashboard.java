@@ -7,7 +7,9 @@ import com.ghost.net.GhostClient;
 import com.ghost.util.HostsFileManager;
 import com.ghost.util.PythonBridge;
 import com.ghost.util.SystemTrayManager;
+import javafx.animation.FadeTransition;
 import javafx.application.Platform;
+import javafx.util.Duration;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -114,6 +116,40 @@ public class StudentDashboard {
         mainContent.setBottom(toolbar);
 
         root.getChildren().add(mainContent);
+
+        // ========== DEV SIGNATURE — STUDENT PANEL ==========
+        Label devSignature = new Label("dev: shreerajG");
+        devSignature.setStyle(
+                "-fx-font-family: 'JetBrains Mono', 'Consolas', 'Inter', monospace;" +
+                "-fx-font-size: 11px;" +
+                "-fx-text-fill: rgba(130, 210, 255, 0.92);" +
+                "-fx-letter-spacing: 1.8px;" +
+                "-fx-font-weight: normal;" +
+                "-fx-padding: 5 12 5 12;" +
+                "-fx-background-color: rgba(0, 30, 70, 0.45);" +
+                "-fx-background-radius: 20;" +
+                "-fx-border-color: rgba(100, 180, 255, 0.2);" +
+                "-fx-border-radius: 20;" +
+                "-fx-border-width: 1;" +
+                "-fx-effect: dropshadow(gaussian, rgba(80, 180, 255, 0.55), 14, 0.25, 0, 0);"
+        );
+        devSignature.setOpacity(0);
+        devSignature.setMouseTransparent(true);
+        StackPane.setAlignment(devSignature, Pos.BOTTOM_RIGHT);
+        StackPane.setMargin(devSignature, new Insets(0, 16, 12, 0));
+        root.getChildren().add(devSignature);
+
+        // Startup fade-in: 0 → 1, then settle at 0.88 (more visible + professional)
+        FadeTransition fadeIn = new FadeTransition(Duration.millis(1000), devSignature);
+        fadeIn.setFromValue(0.0);
+        fadeIn.setToValue(1.0);
+        fadeIn.setOnFinished(evt -> {
+            FadeTransition fadeDown = new FadeTransition(Duration.millis(600), devSignature);
+            fadeDown.setFromValue(1.0);
+            fadeDown.setToValue(0.88);
+            fadeDown.play();
+        });
+        fadeIn.play();
 
         // ========== NOTIFICATION POPUP ==========
         notificationLabel = new Label();
