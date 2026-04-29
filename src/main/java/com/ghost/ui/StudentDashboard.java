@@ -4,7 +4,6 @@ import com.ghost.database.User;
 import com.ghost.net.CommandPacket;
 import com.ghost.net.DiscoveryService;
 import com.ghost.net.GhostClient;
-import com.ghost.util.NetworkManager;
 import com.ghost.util.PythonBridge;
 import com.ghost.util.SystemTrayManager;
 import javafx.animation.FadeTransition;
@@ -571,19 +570,11 @@ public class StudentDashboard {
         Platform.runLater(() -> {
             switch (packet.getType()) {
                 case LOCK:
-                    lockOverlay.setVisible(true);
-                    lockOverlay.toFront();
-                    // Only show 'pay attention' if student is NOT watching admin stream
-                    // (if they're watching the stream, they ARE paying attention)
-                    if (streamView == null || streamView.getImage() == null) {
-                        showNotification("🔒 Pay attention to your instructor!");
-                    } else {
-                        showNotification("🔒 Screen locked by Admin");
-                    }
+                    // Windows lock screen handles this — GhostClient runs LockWorkStation.
+                    // No JavaFX overlay needed.
                     break;
                 case UNLOCK:
-                    lockOverlay.setVisible(false);
-                    showNotification("🔓 Screen unlocked");
+                    // User unlocks via the Windows login screen.
                     break;
                 case MSG:
                     if (chatArea != null) {
@@ -634,12 +625,12 @@ public class StudentDashboard {
                     }
                     break;
                 case INTERNET:
+                    // Note: actual blocking is done by GhostClient on the socket thread.
+                    // StudentDashboard only shows the user notification here.
                     if ("DISABLE".equals(packet.getPayload())) {
-                        NetworkManager.blockSites();
-                        showNotification("🌐 Distracting sites blocked by Admin");
+                        showNotification("🚫 Internet blocked by Admin — stay focused!");
                     } else {
-                        NetworkManager.restoreHostsFile();
-                        showNotification("🌐 Sites unblocked - Internet restored");
+                        showNotification("✅ Internet restored by Admin");
                     }
                     break;
                 case NOTIFICATION:

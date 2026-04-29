@@ -93,11 +93,6 @@ BLOCKED_DOMAINS = [
     # Betting / Gambling
     "dream11.com", "www.dream11.com",
     "bet365.com", "www.bet365.com",
-    # Adult content
-    "pornhub.com", "www.pornhub.com",
-    "xvideos.com", "www.xvideos.com",
-    "xnxx.com", "www.xnxx.com",
-    "xhamster.com", "www.xhamster.com",
     # Music streaming
     "spotify.com", "www.spotify.com", "open.spotify.com",
     "gaana.com", "www.gaana.com",
@@ -356,35 +351,89 @@ def stop_guard():
 
 
 # ──────────────────────────────────────────────
+#  SELF-ELEVATION
+# ──────────────────────────────────────────────
+def self_elevate_and_run(command: str):
+    """
+    Re-launch this script as Administrator using Windows ShellExecuteW.
+    The elevated process writes its output + exit code to a temp file so
+    this (non-elevated) caller can capture the result and forward it.
+    Returns the exit code from the elevated run (0=OK, 1=fail).
+    """
+    import tempfile
+
+    script   = os.path.abspath(__file__)
+    tmp_out  = tempfile.mktemp(suffix=".txt", prefix="ghost_nm_")
+    tmp_code = tempfile.mktemp(suffix=".txt", prefix="ghost_nm_exit_")
+
+    # We run:  python "<script>" <command>  >tmp_out 2>&1
+    # and store exit code in tmp_code.
+    # Use cmd.exe as the intermediary so we can redirect stdout to a file.
+    cmd_args = f'/c python "{script}" {command} > "{tmp_out}" 2>&1 && echo 0 > "{tmp_code}" || echo 1 > "{tmp_code}"'
+
+    # ShellExecuteW: hwnd, verb, file, params, dir, show
+    # show=0 (SW_HIDE) — no console window
+    ret = ctypes.windll.shell32.ShellExecuteW(
+        None, "runas", "cmd.exe", cmd_args, None, 0
+    )
+
+    if ret <= 32:
+        print(f"[NetworkManager] UAC elevation failed or was denied (ShellExecute={ret}).")
+        return 1
+
+    # Wait for the elevated process to finish (poll temp files)
+    for _ in range(60):   # wait up to 30 seconds
+        time.sleep(0.5)
+        if os.path.exists(tmp_code):
+            break
+
+    # Print output
+    if os.path.exists(tmp_out):
+        try:
+            with open(tmp_out, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read().strip()
+            if content:
+                print(content)
+        except Exception:
+            pass
+        try:
+            os.remove(tmp_out)
+        except Exception:
+            pass
+
+    # Read exit code
+    exit_code = 1
+    if os.path.exists(tmp_code):
+        try:
+            with open(tmp_code, "r") as f:
+                exit_code = int(f.read().strip())
+        except Exception:
+            pass
+        try:
+            os.remove(tmp_code)
+        except Exception:
+            pass
+
+    return exit_code
+
+
+# ──────────────────────────────────────────────
 #  ENTRY POINT
 # ──────────────────────────────────────────────
 def main():
-    if not is_admin():
-        print("[NetworkManager] ERROR: Administrator privileges required.")
-        print("[NetworkManager] Please run this script as Administrator.")
-        sys.exit(2)
-
     if len(sys.argv) < 2:
         print("Usage: python network_manager.py [block|unblock|recover|guard]")
         sys.exit(1)
 
     command = sys.argv[1].strip().lower()
 
-    if command == "block":
-        code = block_internet()
-        sys.exit(code)
+    # For the "guard" mode we cannot self-elevate (it's long-running),
+    # so we just report code 2 and let Java handle elevation.
+    if command == "guard":
+        if not is_admin():
+            print("[NetworkManager] ERROR: guard mode requires Administrator privileges.")
+            sys.exit(2)
 
-    elif command == "unblock":
-        code = unblock_internet()
-        sys.exit(code)
-
-    elif command == "recover":
-        # Startup crash recovery check
-        code = failsafe_recovery()
-        sys.exit(code)
-
-    elif command == "guard":
-        # Long-running tamper guard mode (called by Java as a background process)
         def handle_exit(signum, frame):
             print("[NetworkManager] Guard received shutdown signal — unblocking.")
             unblock_internet()
@@ -395,9 +444,24 @@ def main():
         signal.signal(signal.SIGTERM, handle_exit)
 
         start_guard()
-        # Keep running until killed
         while True:
             time.sleep(1)
+
+    # For block/unblock/recover: self-elevate if needed
+    if not is_admin():
+        print(f"[NetworkManager] Not admin — requesting elevation for '{command}'...")
+        code = self_elevate_and_run(command)
+        sys.exit(code)
+
+    # Already admin — run directly
+    if command == "block":
+        sys.exit(block_internet())
+
+    elif command == "unblock":
+        sys.exit(unblock_internet())
+
+    elif command == "recover":
+        sys.exit(failsafe_recovery())
 
     else:
         print(f"[NetworkManager] Unknown command: '{command}'")

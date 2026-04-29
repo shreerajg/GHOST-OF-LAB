@@ -194,25 +194,25 @@ public class NetworkManager {
 
     /**
      * Re-run the Python script elevated via PowerShell "Start-Process -Verb RunAs".
-     * This triggers a UAC prompt. The method blocks until the elevated process exits.
-     * Output is written to a temp file so we can still capture it.
+     * Uses the FULL path to powershell.exe so it works even when not on PATH.
      *
      * @return 0 on success, 1 on failure
      */
     private static int runScriptElevated(String command) {
         try {
-            File script   = new File(SCRIPT_PATH).getAbsoluteFile();
-            File tempOut  = File.createTempFile("ghost_nm_", ".txt");
+            File script  = new File(SCRIPT_PATH).getAbsoluteFile();
+            File tempOut = File.createTempFile("ghost_nm_", ".txt");
             String outPath = tempOut.getAbsolutePath();
 
-            // PowerShell command:
-            //   Start-Process python -Verb RunAs -Wait
-            //       -ArgumentList "<script> <command>"
-            //       -RedirectStandardOutput <tempOut>  ← captures stdout
-            //       -WindowStyle Hidden
-            //
-            // Note: -RedirectStandardOutput only works without -Verb RunAs in
-            // some PS versions, so we wrap via cmd /c and pipe to the file.
+            // Full path to powershell.exe — always present on Windows even if not on PATH
+            String systemRoot = System.getenv("SystemRoot");
+            if (systemRoot == null) systemRoot = "C:\\Windows";
+            String psExe = systemRoot + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+            if (!new File(psExe).exists()) {
+                // 32-bit JVM on 64-bit OS uses SysNative
+                psExe = systemRoot + "\\SysNative\\WindowsPowerShell\\v1.0\\powershell.exe";
+            }
+
             String psCmd = String.format(
                 "Start-Process cmd -Verb RunAs -Wait -WindowStyle Hidden " +
                 "-ArgumentList '/c python \"%s\" %s > \"%s\" 2>&1'",
@@ -220,11 +220,11 @@ public class NetworkManager {
             );
 
             ProcessBuilder pb = new ProcessBuilder(
-                "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", psCmd
+                psExe, "-NoProfile", "-NonInteractive", "-Command", psCmd
             );
             pb.redirectErrorStream(true);
             Process ps = pb.start();
-            drainOutput(ps.getInputStream()); // drain PowerShell's own stdout
+            drainOutput(ps.getInputStream());
             int psExit = ps.waitFor();
 
             // Print what the Python script wrote to the temp file

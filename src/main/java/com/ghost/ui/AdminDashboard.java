@@ -122,15 +122,36 @@ public class AdminDashboard {
                 createStyledButton("🌐 BLOCK INTERNET", internetKilled ? "#666" : "#e74c3c",
                         () -> {
                             if (!internetKilled) {
-                                NetworkManager.blockSites();
                                 internetKilled = true;
+                                if (chatArea != null) chatArea.appendText("[SYSTEM]: 🔄 Blocking internet...\n");
+                                new Thread(() -> {
+                                    boolean ok = NetworkManager.blockSites();
+                                    javafx.application.Platform.runLater(() -> {
+                                        if (ok) {
+                                            if (chatArea != null) chatArea.appendText("[SYSTEM]: 🚫 Internet BLOCKED on this PC.\n");
+                                        } else {
+                                            internetKilled = false;
+                                            if (chatArea != null) chatArea.appendText("[SYSTEM]: ❌ Failed to block internet. Check admin privileges.\n");
+                                        }
+                                    });
+                                }, "GhostBlockThread").start();
                             }
                         }),
                 createStyledButton("✅ UNBLOCK INTERNET", !internetKilled ? "#666" : "#27ae60",
                         () -> {
                             if (internetKilled) {
-                                NetworkManager.restoreHostsFile();
                                 internetKilled = false;
+                                if (chatArea != null) chatArea.appendText("[SYSTEM]: 🔄 Restoring internet...\n");
+                                new Thread(() -> {
+                                    boolean ok = NetworkManager.restoreHostsFile();
+                                    javafx.application.Platform.runLater(() -> {
+                                        if (ok) {
+                                            if (chatArea != null) chatArea.appendText("[SYSTEM]: ✅ Internet UNBLOCKED on this PC.\n");
+                                        } else {
+                                            if (chatArea != null) chatArea.appendText("[SYSTEM]: ⚠️ Unblock may have partially failed — check hosts file.\n");
+                                        }
+                                    });
+                                }, "GhostUnblockThread").start();
                             }
                         }),
                 createStyledButton("📊 GENERATE ATTENDANCE", "#3498db",
@@ -344,20 +365,46 @@ public class AdminDashboard {
                 toggle.setText("RESTORE");
                 toggle.setStyle(
                         "-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 15;");
-                statusLabel.setText("● SITES BLOCKED");
-                statusLabel.setStyle("-fx-text-fill: #e74c3c; -fx-font-weight: bold;");
-                // Block sites on admin PC too and broadcast to students
-                NetworkManager.blockSites();
+                statusLabel.setText("● BLOCKING...");
+                statusLabel.setStyle("-fx-text-fill: #f39c12; -fx-font-weight: bold;");
+                // Broadcast to students immediately, then block on admin in background
                 server.broadcast(new CommandPacket(CommandPacket.Type.INTERNET, "ADMIN", "DISABLE"));
+                if (chatArea != null) chatArea.appendText("[SYSTEM]: 🚫 Internet block broadcast to all students.\n");
+                new Thread(() -> {
+                    boolean ok = NetworkManager.blockSites();
+                    javafx.application.Platform.runLater(() -> {
+                        if (ok) {
+                            statusLabel.setText("● SITES BLOCKED");
+                            statusLabel.setStyle("-fx-text-fill: #e74c3c; -fx-font-weight: bold;");
+                            if (chatArea != null) chatArea.appendText("[SYSTEM]: 🚫 Internet BLOCKED on admin PC.\n");
+                        } else {
+                            statusLabel.setText("● BLOCK FAILED");
+                            statusLabel.setStyle("-fx-text-fill: #e67e22; -fx-font-weight: bold;");
+                            if (chatArea != null) chatArea.appendText("[SYSTEM]: ❌ Admin PC block failed. Check privileges.\n");
+                        }
+                    });
+                }, "GhostBlockThread").start();
             } else {
                 toggle.setText("KILL");
                 toggle.setStyle(
                         "-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 15;");
-                statusLabel.setText("● ONLINE");
-                statusLabel.setStyle("-fx-text-fill: #2ecc71; -fx-font-weight: bold;");
-                // Restore hosts file on admin and broadcast to students
-                NetworkManager.restoreHostsFile();
+                statusLabel.setText("● RESTORING...");
+                statusLabel.setStyle("-fx-text-fill: #f39c12; -fx-font-weight: bold;");
+                // Broadcast to students immediately, then restore on admin in background
                 server.broadcast(new CommandPacket(CommandPacket.Type.INTERNET, "ADMIN", "ENABLE"));
+                if (chatArea != null) chatArea.appendText("[SYSTEM]: ✅ Internet restore broadcast to all students.\n");
+                new Thread(() -> {
+                    boolean ok = NetworkManager.restoreHostsFile();
+                    javafx.application.Platform.runLater(() -> {
+                        statusLabel.setText("● ONLINE");
+                        statusLabel.setStyle("-fx-text-fill: #2ecc71; -fx-font-weight: bold;");
+                        if (ok) {
+                            if (chatArea != null) chatArea.appendText("[SYSTEM]: ✅ Internet UNBLOCKED on admin PC.\n");
+                        } else {
+                            if (chatArea != null) chatArea.appendText("[SYSTEM]: ⚠️ Admin PC restore may have partially failed.\n");
+                        }
+                    });
+                }, "GhostUnblockThread").start();
             }
         });
 
