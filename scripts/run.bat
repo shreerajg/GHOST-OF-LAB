@@ -1,6 +1,18 @@
 @echo off
 setlocal
 
+REM ── UAC ELEVATION CHECK ──────────────────────────────────────────
+REM Ghost needs admin rights to modify the hosts file.
+REM If not already elevated, relaunch this script as Administrator.
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Requesting Administrator privileges...
+    powershell -NoProfile -Command ^
+        "Start-Process cmd -ArgumentList '/c cd /d \"%~dp0\" && \"%~f0\"' -Verb RunAs"
+    exit /b
+)
+REM ─────────────────────────────────────────────────────────────────
+
 set "LIB_DIR=..\lib"
 set "OUT_DIR=..\out"
 set "MAIN_CLASS=com.ghost.Main"
