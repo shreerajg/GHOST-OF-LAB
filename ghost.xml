@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch4jConfig>
+  <dontWrapJar>false</dontWrapJar>
+  <headerType>gui</headerType>
+  <jar>C:\Users\shree\OneDrive\Desktop\GHOST\dist\GHOST.jar</jar>
+  <outfile>C:\Users\shree\OneDrive\Desktop\GHOST\dist\ghost.exe</outfile>
+  <errTitle></errTitle>
+  <cmdLine></cmdLine>
+  <chdir>.</chdir>
+  <priority>normal</priority>
+  <downloadUrl></downloadUrl>
+  <supportUrl></supportUrl>
+  <stayAlive>false</stayAlive>
+  <restartOnCrash>false</restartOnCrash>
+  <manifest></manifest>
+  <icon></icon>
+  <classPath>
+    <mainClass>com.ghost.Main</mainClass>
+    <cp>GHOST.jar</cp>
+    <cp>lib\*</cp>
+  </classPath>
+  <jre>
+    <path>%JAVA_HOME%;%PATH%</path>
+    <requiresJdk>false</requiresJdk>
+    <requires64Bit>false</requires64Bit>
+    <minVersion>17.0.0</minVersion>
+    <maxVersion></maxVersion>
+    <opt>--module-path lib --add-modules javafx.controls,javafx.fxml</opt>
+  </jre>
+  <messages>
+    <startupErr>An error occurred while starting the application LOL.</startupErr>
+    <jreNotFoundErr>This application requires a Java Runtime Environment NOOB.</jreNotFoundErr>
+    <jreVersionErr>This application requires a Java Runtime Environment LOL</jreVersionErr>
+    <launcherErr>The registry refers to a nonexistent Java Runtime Environment installation or the runtime is corrupted LOL.</launcherErr>
+    <instanceAlreadyExistsMsg>An application instance is already running.</instanceAlreadyExistsMsg>
+  </messages>
+</launch4jConfig>
