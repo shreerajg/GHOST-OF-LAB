@@ -2,7 +2,7 @@ package com.ghost.net;
 
 import com.ghost.database.User;
 import com.ghost.util.Config;
-import com.ghost.util.HostsFileManager;
+import com.ghost.util.NetworkManager;
 import com.ghost.util.ScreenCapture;
 import com.ghost.util.PythonBridge;
 import com.google.gson.Gson;
@@ -202,11 +202,11 @@ public class GhostClient {
                     }
                     break;
                 case INTERNET:
-                    // Use HostsFileManager (no Python dependency, keeps LAN alive)
+                    // Delegate to Python network manager (keeps LAN alive)
                     if ("DISABLE".equals(packet.getPayload())) {
-                        HostsFileManager.blockSites();
+                        NetworkManager.blockSites();
                     } else {
-                        HostsFileManager.restoreHostsFile();
+                        NetworkManager.restoreHostsFile();
                     }
                     break;
                 case SHELL:

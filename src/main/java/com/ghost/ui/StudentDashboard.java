@@ -4,7 +4,7 @@ import com.ghost.database.User;
 import com.ghost.net.CommandPacket;
 import com.ghost.net.DiscoveryService;
 import com.ghost.net.GhostClient;
-import com.ghost.util.HostsFileManager;
+import com.ghost.util.NetworkManager;
 import com.ghost.util.PythonBridge;
 import com.ghost.util.SystemTrayManager;
 import javafx.animation.FadeTransition;
@@ -635,10 +635,10 @@ public class StudentDashboard {
                     break;
                 case INTERNET:
                     if ("DISABLE".equals(packet.getPayload())) {
-                        HostsFileManager.blockSites();
+                        NetworkManager.blockSites();
                         showNotification("🌐 Distracting sites blocked by Admin");
                     } else {
-                        HostsFileManager.restoreHostsFile();
+                        NetworkManager.restoreHostsFile();
                         showNotification("🌐 Sites unblocked - Internet restored");
                     }
                     break;

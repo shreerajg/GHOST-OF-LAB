@@ -199,8 +199,8 @@ public class SystemTrayManager {
                 tray.remove(trayIcon);
             }
 
-            // Cleanup hosts file
-            HostsFileManager.restoreHostsFile();
+            // Cleanup hosts file via Python network manager
+            NetworkManager.restoreHostsFile();
 
             System.out.println("GHOST exiting...");
             System.exit(0);

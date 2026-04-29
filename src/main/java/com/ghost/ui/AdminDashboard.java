@@ -4,7 +4,7 @@ import com.ghost.database.User;
 import com.ghost.net.CommandPacket;
 import com.ghost.net.DiscoveryService;
 import com.ghost.net.GhostServer;
-import com.ghost.util.HostsFileManager;
+import com.ghost.util.NetworkManager;
 import com.ghost.util.ScreenCapture;
 import com.ghost.util.SystemTrayManager;
 import javafx.animation.FadeTransition;
@@ -122,14 +122,14 @@ public class AdminDashboard {
                 createStyledButton("🌐 BLOCK INTERNET", internetKilled ? "#666" : "#e74c3c",
                         () -> {
                             if (!internetKilled) {
-                                HostsFileManager.blockSites();
+                                NetworkManager.blockSites();
                                 internetKilled = true;
                             }
                         }),
                 createStyledButton("✅ UNBLOCK INTERNET", !internetKilled ? "#666" : "#27ae60",
                         () -> {
                             if (internetKilled) {
-                                HostsFileManager.restoreHostsFile();
+                                NetworkManager.restoreHostsFile();
                                 internetKilled = false;
                             }
                         }),
@@ -347,7 +347,7 @@ public class AdminDashboard {
                 statusLabel.setText("● SITES BLOCKED");
                 statusLabel.setStyle("-fx-text-fill: #e74c3c; -fx-font-weight: bold;");
                 // Block sites on admin PC too and broadcast to students
-                HostsFileManager.blockSites();
+                NetworkManager.blockSites();
                 server.broadcast(new CommandPacket(CommandPacket.Type.INTERNET, "ADMIN", "DISABLE"));
             } else {
                 toggle.setText("KILL");
@@ -356,7 +356,7 @@ public class AdminDashboard {
                 statusLabel.setText("● ONLINE");
                 statusLabel.setStyle("-fx-text-fill: #2ecc71; -fx-font-weight: bold;");
                 // Restore hosts file on admin and broadcast to students
-                HostsFileManager.restoreHostsFile();
+                NetworkManager.restoreHostsFile();
                 server.broadcast(new CommandPacket(CommandPacket.Type.INTERNET, "ADMIN", "ENABLE"));
             }
         });
