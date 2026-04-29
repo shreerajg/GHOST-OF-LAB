@@ -13,6 +13,10 @@ echo ========================================
 echo   GHOST DIST GENERATOR
 echo ========================================
 
+echo [0/3] Closing running instances...
+taskkill /F /IM javaw.exe /T >nul 2>&1
+taskkill /F /IM GHOST.exe /T >nul 2>&1
+
 echo [1/3] Cleaning and Rebuilding...
 if exist "%DIST_DIR%" rd /s /q "%DIST_DIR%"
 if exist "%OUT_DIR%" rd /s /q "%OUT_DIR%"
