@@ -40,14 +40,13 @@ public class SystemTrayManager {
         try {
             tray = SystemTray.getSystemTray();
 
-            // Create tray icon (using a simple image)
-            Image image = Toolkit.getDefaultToolkit().createImage(
-                    SystemTrayManager.class.getResource("/ghost_icon.png"));
-
-            // Fallback: Create a simple colored icon if image not found
-            if (image == null || image.getWidth(null) <= 0) {
-                image = createDefaultIcon();
-            }
+            // Create tray icon — guard against missing resource (getResource returns null
+            // if ghost_icon.png is not in the classpath; passing null to createImage()
+            // causes a deferred NPE on the image-fetcher thread).
+            java.net.URL iconUrl = SystemTrayManager.class.getResource("/ghost_icon.png");
+            Image image = (iconUrl != null)
+                    ? Toolkit.getDefaultToolkit().createImage(iconUrl)
+                    : createDefaultIcon();
 
             PopupMenu popup = createPopupMenu(role);
             trayIcon = new TrayIcon(image, "GHOST - " + role, popup);
@@ -199,8 +198,8 @@ public class SystemTrayManager {
                 tray.remove(trayIcon);
             }
 
-            // Cleanup hosts file via Python network manager
-            NetworkManager.restoreHostsFile();
+            // Cleanup hosts file
+            HostsFileManager.restoreHostsFile();
 
             System.out.println("GHOST exiting...");
             System.exit(0);

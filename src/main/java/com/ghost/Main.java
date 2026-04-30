@@ -2,7 +2,7 @@ package com.ghost;
 
 import com.ghost.database.DatabaseManager;
 import com.ghost.ui.LoginView;
-import com.ghost.util.NetworkManager;
+import com.ghost.util.HostsFileManager;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.stage.Stage;
@@ -18,15 +18,17 @@ public class Main extends Application {
         // Initialize Database
         DatabaseManager.init();
 
-        // Startup crash-recovery: if previous session crashed while blocking,
-        // Python will detect the backup and restore the hosts file automatically.
-        NetworkManager.recoverOnStartup();
+        // Cleanup any leftover host blocks from a previous crash
+        if (HostsFileManager.hasLeftoverBlocks()) {
+            System.out.println("[Main] Found leftover host blocks from previous session - cleaning up");
+            HostsFileManager.restoreHostsFile();
+        }
 
-        // Register JVM shutdown hook to ALWAYS restore hosts file on exit.
-        // This handles: System.exit(), Ctrl+C, Task Manager kill, crashes.
+        // Register JVM shutdown hook to ALWAYS restore hosts file on exit
+        // This handles: System.exit(), Ctrl+C, Task Manager kill, crashes
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("[Main] Shutdown hook: Restoring hosts file via Python...");
-            NetworkManager.restoreHostsFile();
+            System.out.println("[Main] Shutdown hook: Restoring hosts file...");
+            HostsFileManager.restoreHostsFile();
         }, "GhostShutdownHook"));
 
         // Always show login screen - no auto-login

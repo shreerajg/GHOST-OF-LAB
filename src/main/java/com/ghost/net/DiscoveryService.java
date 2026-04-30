@@ -72,10 +72,6 @@ public class DiscoveryService {
                             }
                         }
 
-                        // Also broadcast to localhost for same-machine testing
-                        packet = new DatagramPacket(data, data.length,
-                                InetAddress.getByName("127.0.0.1"), DISCOVERY_PORT);
-                        socket.send(packet);
 
                         Thread.sleep(BROADCAST_INTERVAL_MS);
                     } catch (InterruptedException e) {
@@ -113,11 +109,11 @@ public class DiscoveryService {
             socket.setBroadcast(true);
             socket.setSoTimeout(5000); // 5 second timeout per attempt
         } catch (IOException e) {
-            System.err.println("Discovery: Cannot bind to port " + DISCOVERY_PORT + " - trying localhost fallback");
-            // Port in use (likely by Admin on same machine), use localhost
-            if (listener != null) {
-                listener.onServerFound("127.0.0.1", Config.SERVER_PORT);
-            }
+            // Port already bound — this machine is likely the Admin itself.
+            // Do NOT fall back to 127.0.0.1; student should never auto-connect to localhost
+            // on a real LAN. Log and bail so the student UI stays in "searching" state.
+            System.err.println("Discovery: Cannot bind to port " + DISCOVERY_PORT + " (" + e.getMessage() + ") — discovery disabled.");
+            running.set(false);
             return;
         }
 
@@ -137,10 +133,9 @@ public class DiscoveryService {
                             int port = Integer.parseInt(parts[1]);
                             String serverIp = parts[2];
 
-                            // On same machine, prefer localhost
-                            if (serverIp.equals(getLocalIp())) {
-                                serverIp = "127.0.0.1";
-                            }
+                            // Use the LAN IP embedded in the broadcast packet as-is.
+                            // Never override with 127.0.0.1 — students connect over the
+                            // real network, not loopback, even when tested on the same machine.
 
                             // Only log when IP changes or first discovery
                             if (!serverIp.equals(lastFoundIp)) {
