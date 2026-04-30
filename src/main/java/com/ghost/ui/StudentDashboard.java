@@ -665,17 +665,9 @@ public class StudentDashboard {
                     }
                     break;
                 case OPEN_URL:
-                    // Open URL in default browser
                     String url = packet.getPayload();
                     try {
-                        String os = System.getProperty("os.name").toLowerCase();
-                        if (os.contains("win")) {
-                            Runtime.getRuntime().exec("cmd /c start " + url);
-                        } else if (os.contains("mac")) {
-                            Runtime.getRuntime().exec("open " + url);
-                        } else if (os.contains("nix") || os.contains("nux")) {
-                            Runtime.getRuntime().exec("xdg-open " + url);
-                        }
+                        java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
                         showNotification("🔗 Opening URL: " + url);
                     } catch (Exception e) {
                         System.err.println("[Student] Error opening URL: " + e.getMessage());
