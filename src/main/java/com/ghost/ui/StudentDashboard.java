@@ -590,6 +590,15 @@ public class StudentDashboard {
                         }
                     });
                     break;
+                case STOP_SCREEN_SHARE:
+                    if (streamView != null) {
+                        streamView.setImage(null);
+                        // Show waiting label
+                        javafx.scene.Node waitLabel = streamView.getParent().lookup("#waitingLabel");
+                        if (waitLabel != null)
+                            waitLabel.setVisible(true);
+                    }
+                    break;
                 case FILE_DATA:
                     // Receive and save file
                     try {

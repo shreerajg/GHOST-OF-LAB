@@ -4,7 +4,7 @@ public class CommandPacket {
     public enum Type {
         CONNECT, DISCONNECT, LOCK, UNLOCK, SHUTDOWN, RESTART, MSG, SCREEN_DATA,
         INTERNET, SHELL, SHELL_OUTPUT, FILE_DATA, ADMIN_SCREEN, NOTIFICATION,
-        SCREENSHOT_ALL, OPEN_URL
+        SCREENSHOT_ALL, OPEN_URL, STOP_SCREEN_SHARE
     }
 
     private Type type;

@@ -373,6 +373,8 @@ public class AdminDashboard {
             screenScheduler.shutdown();
             screenScheduler = null;
         }
+        // Notify students that the stream has stopped
+        server.broadcast(new CommandPacket(CommandPacket.Type.STOP_SCREEN_SHARE, "ADMIN", "STOP"));
     }
 
     private static void addStudentCard(String name, Image screenshot) {
