@@ -43,6 +43,8 @@ public class StudentDashboard {
     private static Circle statusDot;
     private static Label statusLabel;
     private static String currentUsername;
+    // Decode-gate: skip incoming frames when decoder is busy to avoid queue buildup
+    private static volatile boolean decodingFrame = false;
 
     public static void show(Stage stage, User user) {
         IconUtil.setIcon(stage);
@@ -573,22 +575,34 @@ public class StudentDashboard {
                     }
                     break;
                 case ADMIN_SCREEN:
-                    // Update stream view with Admin's screen (must be on FX thread)
-                    Platform.runLater(() -> {
-                        try {
-                            byte[] imageBytes = Base64.getDecoder().decode(packet.getPayload());
-                            Image image = new Image(new ByteArrayInputStream(imageBytes));
-                            if (streamView != null) {
-                                streamView.setImage(image);
-                                // Hide waiting label
-                                javafx.scene.Node waitLabel = streamView.getParent().lookup("#waitingLabel");
-                                if (waitLabel != null)
-                                    waitLabel.setVisible(false);
+                    // Decode off the FX thread to keep UI smooth.
+                    // decodingFrame gate drops frames that arrive while decode is in progress
+                    // (prevents a backlog of queued frames causing lag)
+                    if (!decodingFrame) {
+                        decodingFrame = true;
+                        final String payload = packet.getPayload();
+                        Thread decodeThread = new Thread(() -> {
+                            try {
+                                byte[] imageBytes = Base64.getDecoder().decode(payload);
+                                javafx.scene.image.Image image =
+                                    new javafx.scene.image.Image(new ByteArrayInputStream(imageBytes));
+                                Platform.runLater(() -> {
+                                    if (streamView != null) {
+                                        streamView.setImage(image);
+                                        javafx.scene.Node waitLabel =
+                                            streamView.getParent().lookup("#waitingLabel");
+                                        if (waitLabel != null) waitLabel.setVisible(false);
+                                    }
+                                    decodingFrame = false;
+                                });
+                            } catch (Exception ex) {
+                                decodingFrame = false;
                             }
-                        } catch (Exception ex) {
-                            System.err.println("Failed to decode admin screen: " + ex.getMessage());
-                        }
-                    });
+                        }, "GhostFrameDecode");
+                        decodeThread.setDaemon(true);
+                        decodeThread.setPriority(Thread.NORM_PRIORITY + 1);
+                        decodeThread.start();
+                    }
                     break;
                 case STOP_SCREEN_SHARE:
                     if (streamView != null) {

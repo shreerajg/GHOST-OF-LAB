@@ -312,8 +312,8 @@ public class AdminDashboard {
     }
 
 
-    private static boolean screenSharing = false;
-    private static java.util.concurrent.ScheduledExecutorService screenScheduler;
+    private static volatile boolean screenSharing = false;
+    private static Thread screenSendThread;
 
     private static HBox createScreenShareToggle() {
         HBox toggleBox = new HBox(10);
@@ -350,29 +350,35 @@ public class AdminDashboard {
     }
 
     private static void startAdminScreenShare() {
-        // Start async capture thread (captures at 40fps in background)
         ScreenCapture.startAsyncCapture();
+        screenSharing = true;
 
-        screenScheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
-        // Send latest frame every 25ms (40fps send rate) for smooth, stable streaming
-        // Reduced from 60fps to optimize CPU usage and allow other tasks to run
-        // Since capture is async, this never blocks waiting for a screenshot
-        screenScheduler.scheduleAtFixedRate(() -> {
-            if (screenSharing) {
-                String base64 = ScreenCapture.getLatestFrame();
-                if (base64 != null) {
-                    server.broadcast(new CommandPacket(CommandPacket.Type.ADMIN_SCREEN, "ADMIN", base64));
-                }
+        screenSendThread = new Thread(() -> {
+            while (screenSharing) {
+                try {
+                    String frame = ScreenCapture.getLatestFrame(); // consumes frame atomically
+                    if (frame != null) {
+                        server.broadcast(new CommandPacket(CommandPacket.Type.ADMIN_SCREEN, "ADMIN", frame));
+                    }
+                    // Sleep a short interval to avoid busy-spin but stay responsive
+                    Thread.sleep(5);
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Exception ignored) {}
             }
-        }, 0, 25, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }, "GhostScreenSend");
+        screenSendThread.setDaemon(true);
+        screenSendThread.setPriority(Thread.NORM_PRIORITY);
+        screenSendThread.start();
     }
 
     private static void stopAdminScreenShare() {
-        ScreenCapture.stopAsyncCapture();
-        if (screenScheduler != null) {
-            screenScheduler.shutdown();
-            screenScheduler = null;
+        screenSharing = false;
+        if (screenSendThread != null) {
+            screenSendThread.interrupt();
+            screenSendThread = null;
         }
+        ScreenCapture.stopAsyncCapture();
         // Notify students that the stream has stopped
         server.broadcast(new CommandPacket(CommandPacket.Type.STOP_SCREEN_SHARE, "ADMIN", "STOP"));
     }

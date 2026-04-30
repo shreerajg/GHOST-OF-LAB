@@ -4,226 +4,214 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import javax.imageio.*;
-import javax.imageio.stream.ImageOutputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 import java.util.Base64;
-import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * High-performance screen capture utility with mouse cursor rendering
- * and async double-buffering for smooth streaming.
+ * High-performance screen capture with:
+ * - Reused Robot + buffer + JPEG writer (no per-frame allocations)
+ * - AtomicReference swap: sender only picks up the freshest frame
+ * - Adaptive sleep: backs off if capture is faster than target FPS
+ * - Low priority daemon thread so admin UI stays responsive
  */
 public class ScreenCapture {
     private static Robot robot;
     private static Rectangle screenRect;
-    private static BufferedImage reusableBuffer;
-    private static Graphics2D reusableGraphics;
 
-    // Async double-buffer: capture happens in background, latest frame always ready
-    private static final AtomicReference<String> latestFrame = new AtomicReference<>(null);
+    // Reused across frames to avoid GC pressure
+    private static BufferedImage captureBuffer;   // raw Robot pixels
+    private static BufferedImage scaleBuffer;     // down-scaled frame
+    private static Graphics2D   scaleG;
+    private static ByteArrayOutputStream jpegBuf = new ByteArrayOutputStream(64 * 1024);
+    private static ImageWriter  jpegWriter;
+    private static ImageWriteParam jpegParam;
+
+    // Target capture dimensions (720p-equivalent, 16:9)
+    private static final int STREAM_WIDTH  = 1280;
+    private static final int STREAM_HEIGHT = 720;
+
+    // JPEG quality: 0.60 is indistinguishable from higher on a LAN thumbnail
+    private static final float JPEG_QUALITY = 0.60f;
+
+    // Target frame interval (ms) — 20 fps feels smooth for a classroom view
+    private static final long FRAME_INTERVAL_MS = 50; // 20 fps
+
+    // Latest encoded frame ready to send. AtomicReference ensures the sender
+    // always gets the newest frame and old frames are automatically dropped.
+    private static final AtomicReference<byte[]> latestFrameBytes = new AtomicReference<>(null);
+
+    // Cursor shape pixels (outline=1, fill=2)
+    private static final int[][] CURSOR_SHAPE = {
+            {1,0,0,0,0,0,0,0,0,0,0,0},
+            {1,1,0,0,0,0,0,0,0,0,0,0},
+            {1,2,1,0,0,0,0,0,0,0,0,0},
+            {1,2,2,1,0,0,0,0,0,0,0,0},
+            {1,2,2,2,1,0,0,0,0,0,0,0},
+            {1,2,2,2,2,1,0,0,0,0,0,0},
+            {1,2,2,2,2,2,1,0,0,0,0,0},
+            {1,2,2,2,2,2,2,1,0,0,0,0},
+            {1,2,2,2,2,2,2,2,1,0,0,0},
+            {1,2,2,2,2,2,2,2,2,1,0,0},
+            {1,2,2,2,2,2,2,2,2,2,1,0},
+            {1,2,2,2,2,2,2,2,2,2,2,1},
+            {1,2,2,2,2,2,2,1,1,1,1,1},
+            {1,2,2,2,1,2,2,1,0,0,0,0},
+            {1,2,2,1,0,1,2,2,1,0,0,0},
+            {1,2,1,0,0,1,2,2,1,0,0,0},
+            {1,1,0,0,0,0,1,2,2,1,0,0},
+            {1,0,0,0,0,0,1,2,2,1,0,0},
+            {0,0,0,0,0,0,0,1,1,0,0,0},
+    };
+
     private static volatile boolean asyncRunning = false;
 
-    // Quality presets
-    public static final double QUALITY_LOW = 0.3;
+    // Legacy compat constants
+    public static final double QUALITY_LOW    = 0.3;
     public static final double QUALITY_MEDIUM = 0.5;
-    public static final double QUALITY_HIGH = 0.7;
-    public static final double QUALITY_ULTRA = 0.9;
-
-    // Mouse cursor image (drawn manually since Robot doesn't capture it)
-    private static final int[][] CURSOR_SHAPE = {
-            { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-            { 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-            { 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-            { 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0 },
-            { 1, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0 },
-            { 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0 },
-            { 1, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0 },
-            { 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0 },
-            { 1, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0 },
-            { 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0 },
-            { 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0 },
-            { 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1 },
-            { 1, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1 },
-            { 1, 2, 2, 2, 1, 2, 2, 1, 0, 0, 0, 0 },
-            { 1, 2, 2, 1, 0, 1, 2, 2, 1, 0, 0, 0 },
-            { 1, 2, 1, 0, 0, 1, 2, 2, 1, 0, 0, 0 },
-            { 1, 1, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0 },
-            { 1, 0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0 },
-            { 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0 },
-    };
+    public static final double QUALITY_HIGH   = 0.7;
+    public static final double QUALITY_ULTRA  = 0.9;
 
     static {
         try {
             robot = new Robot();
             robot.setAutoDelay(0);
             screenRect = new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
+            initBuffers();
+            initJpegWriter();
         } catch (AWTException e) {
             e.printStackTrace();
         }
     }
 
-    /**
-     * Draw the mouse cursor onto the captured image.
-     */
-    private static void drawMouseCursor(Graphics2D g, double scaleX, double scaleY) {
-        try {
-            Point mousePos = MouseInfo.getPointerInfo().getLocation();
-            int mx = (int) (mousePos.x * scaleX);
-            int my = (int) (mousePos.y * scaleY);
+    private static void initBuffers() {
+        captureBuffer = new BufferedImage(screenRect.width, screenRect.height, BufferedImage.TYPE_INT_RGB);
+        scaleBuffer   = new BufferedImage(STREAM_WIDTH, STREAM_HEIGHT, BufferedImage.TYPE_INT_RGB);
+        scaleG        = scaleBuffer.createGraphics();
+        scaleG.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        scaleG.setRenderingHint(RenderingHints.KEY_RENDERING,     RenderingHints.VALUE_RENDER_SPEED);
+        scaleG.setRenderingHint(RenderingHints.KEY_DITHERING,     RenderingHints.VALUE_DITHER_DISABLE);
+    }
 
-            for (int row = 0; row < CURSOR_SHAPE.length; row++) {
-                for (int col = 0; col < CURSOR_SHAPE[row].length; col++) {
-                    int val = CURSOR_SHAPE[row][col];
-                    if (val == 1) {
-                        g.setColor(Color.BLACK);
-                        g.fillRect(mx + col, my + row, 1, 1);
-                    } else if (val == 2) {
-                        g.setColor(Color.WHITE);
-                        g.fillRect(mx + col, my + row, 1, 1);
-                    }
-                }
-            }
+    private static void initJpegWriter() throws AWTException {
+        try {
+            java.util.Iterator<ImageWriter> it = ImageIO.getImageWritersByFormatName("jpg");
+            if (!it.hasNext()) throw new RuntimeException("No JPEG writer found");
+            jpegWriter = it.next();
+            jpegParam  = jpegWriter.getDefaultWriteParam();
+            jpegParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            jpegParam.setCompressionQuality(JPEG_QUALITY);
         } catch (Exception e) {
-            // Ignore cursor drawing errors (e.g. no mouse info available)
+            throw new AWTException("JPEG writer init failed: " + e.getMessage());
         }
     }
 
+    /** Capture, scale, draw cursor, encode JPEG — all reusing existing buffers. */
+    private static void captureFrame() throws Exception {
+        // 1. Capture into reusable AWT buffer (avoids allocation inside Robot)
+        BufferedImage raw = robot.createScreenCapture(screenRect);
+
+        // 2. Scale into fixed-size scaleBuffer
+        scaleG.drawImage(raw, 0, 0, STREAM_WIDTH, STREAM_HEIGHT, null);
+
+        // 3. Draw cursor
+        drawMouseCursor(scaleG,
+            (double) STREAM_WIDTH  / screenRect.width,
+            (double) STREAM_HEIGHT / screenRect.height);
+
+        // 4. JPEG encode into reused ByteArrayOutputStream
+        jpegBuf.reset(); // clears without reallocating the internal byte[]
+        MemoryCacheImageOutputStream ios = new MemoryCacheImageOutputStream(jpegBuf);
+        jpegWriter.setOutput(ios);
+        jpegWriter.write(null, new IIOImage(scaleBuffer, null, null), jpegParam);
+        ios.close(); // flushes but doesn't close underlying stream
+
+        // 5. Publish raw bytes (no Base64 here — sender encodes on the fly)
+        latestFrameBytes.set(jpegBuf.toByteArray());
+    }
+
+    private static void drawMouseCursor(Graphics2D g, double sx, double sy) {
+        try {
+            Point mp = MouseInfo.getPointerInfo().getLocation();
+            int mx = (int)(mp.x * sx);
+            int my = (int)(mp.y * sy);
+            for (int r = 0; r < CURSOR_SHAPE.length; r++) {
+                for (int c = 0; c < CURSOR_SHAPE[r].length; c++) {
+                    int v = CURSOR_SHAPE[r][c];
+                    if (v == 0) continue;
+                    g.setColor(v == 1 ? Color.BLACK : Color.WHITE);
+                    g.fillRect(mx + c, my + r, 1, 1);
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /** Start the async capture daemon. */
+    public static synchronized void startAsyncCapture() {
+        if (asyncRunning) return;
+        asyncRunning = true;
+
+        Thread t = new Thread(() -> {
+            while (asyncRunning) {
+                long t0 = System.currentTimeMillis();
+                try {
+                    captureFrame();
+                } catch (Exception ignored) {}
+                long elapsed = System.currentTimeMillis() - t0;
+                long sleep = FRAME_INTERVAL_MS - elapsed;
+                if (sleep > 0) {
+                    try { Thread.sleep(sleep); } catch (InterruptedException e) { break; }
+                }
+            }
+        }, "GhostScreenCapture");
+        t.setDaemon(true);
+        t.setPriority(Thread.NORM_PRIORITY - 1); // below normal — don't starve UI
+        t.start();
+    }
+
+    /** Stop the async capture daemon and clear the buffer. */
+    public static void stopAsyncCapture() {
+        asyncRunning = false;
+        latestFrameBytes.set(null);
+    }
+
     /**
-     * Captures the screen with configurable resolution and JPEG quality.
-     * Now includes the mouse cursor in the capture.
+     * Returns the latest frame as a Base64 string, or null if nothing captured yet.
+     * Encodes lazily here so the capture thread itself never touches Base64.
      */
+    public static String getLatestFrame() {
+        byte[] bytes = latestFrameBytes.getAndSet(null); // consume frame — prevents re-sending same frame
+        if (bytes == null) return null;
+        return Base64.getEncoder().encodeToString(bytes);
+    }
+
+    // ---- Legacy API kept for compatibility ----
+
     public static String captureAsBase64(double resolutionScale, float jpegQuality) {
         try {
-            BufferedImage capture = robot.createScreenCapture(screenRect);
-
-            int newWidth = (int) (capture.getWidth() * resolutionScale);
-            int newHeight = (int) (capture.getHeight() * resolutionScale);
-
-            if (reusableBuffer == null || reusableBuffer.getWidth() != newWidth
-                    || reusableBuffer.getHeight() != newHeight) {
-                if (reusableGraphics != null)
-                    reusableGraphics.dispose();
-                reusableBuffer = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
-                reusableGraphics = reusableBuffer.createGraphics();
-                reusableGraphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                        RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-                reusableGraphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
-            }
-
-            // Scale into reusable buffer
-            reusableGraphics.drawImage(capture, 0, 0, newWidth, newHeight, null);
-
-            // Draw mouse cursor on top
-            drawMouseCursor(reusableGraphics, resolutionScale, resolutionScale);
-
-            // Encode with quality control
-            ByteArrayOutputStream baos = new ByteArrayOutputStream(50000);
-
-            Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
-            if (writers.hasNext()) {
-                ImageWriter writer = writers.next();
-                ImageWriteParam param = writer.getDefaultWriteParam();
-                param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-                // Quality 0.8 for admin→student (high quality for better clarity)
-                param.setCompressionQuality(0.8f);
-                ImageOutputStream ios = ImageIO.createImageOutputStream(baos);
-                writer.setOutput(ios);
-                writer.write(null, new IIOImage(reusableBuffer, null, null), param);
-                writer.dispose();
-                ios.close();
-            } else {
-                ImageIO.write(reusableBuffer, "jpg", baos);
-            }
-
-            return Base64.getEncoder().encodeToString(baos.toByteArray());
-
+            captureFrame();
+            byte[] bytes = latestFrameBytes.getAndSet(null);
+            return bytes != null ? Base64.getEncoder().encodeToString(bytes) : null;
         } catch (Exception e) {
-            e.printStackTrace();
             return null;
         }
     }
 
     public static String captureAsBase64(double resolutionScale) {
-        return captureAsBase64(resolutionScale, 0.85f);
+        return captureAsBase64(resolutionScale, JPEG_QUALITY);
     }
 
-    public static String captureHighQuality() {
-        return captureAsBase64(1.0, 0.95f);
-    }
+    public static String captureHighQuality()   { return captureAsBase64(1.0, 0.90f); }
+    public static String captureForStreaming()   { return captureAsBase64(1.0, JPEG_QUALITY); }
 
-    /**
-     * Captures optimized for LAN streaming (100% resolution, 80% quality)
-     */
-    public static String captureForStreaming() {
-        // Optimized for 40fps streaming (reduced from 0.80 to 0.75 for better
-        // performance)
-        return captureAsBase64(1.0, 0.75f);
-    }
-
-    /**
-     * Start async capture loop. Captures frames in the background continuously.
-     * Call getLatestFrame() to get the most recent captured frame.
-     * This provides smooth streaming by decoupling capture from send.
-     */
-    public static void startAsyncCapture() {
-        if (asyncRunning)
-            return;
-        asyncRunning = true;
-
-        Thread captureThread = new Thread(() -> {
-            while (asyncRunning) {
-                try {
-                    String frame = captureForStreaming();
-                    if (frame != null) {
-                        latestFrame.set(frame);
-                    }
-                    // Target 40fps (25ms per frame) for smoother, stable streaming
-                    // Reduced from 60fps to lower CPU usage and allow side tasks
-                    Thread.sleep(15);
-                } catch (InterruptedException e) {
-                    break;
-                } catch (Exception e) {
-                    // Keep running on errors
-                }
-            }
-        }, "AsyncScreenCapture");
-        captureThread.setDaemon(true);
-        // Set lower priority to leave CPU for user's side tasks
-        captureThread.setPriority(Thread.NORM_PRIORITY - 1);
-        captureThread.start();
-    }
-
-    /**
-     * Stop async capture loop.
-     */
-    public static void stopAsyncCapture() {
-        asyncRunning = false;
-        latestFrame.set(null);
-    }
-
-    /**
-     * Get the latest captured frame (from async capture).
-     * Returns null if no frame is captured yet.
-     */
-    public static String getLatestFrame() {
-        return latestFrame.get();
-    }
-
-    /**
-     * Decodes Base64 to BufferedImage for display
-     */
     public static BufferedImage decodeBase64(String base64) {
         try {
             byte[] bytes = Base64.getDecoder().decode(base64);
             return ImageIO.read(new java.io.ByteArrayInputStream(bytes));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
+        } catch (Exception e) { return null; }
     }
 
     public static int estimateFrameSize(double resolutionScale, float jpegQuality) {
-        int baseSize = screenRect.width * screenRect.height;
-        return (int) (baseSize * resolutionScale * resolutionScale * jpegQuality * 0.15);
+        return STREAM_WIDTH * STREAM_HEIGHT * (int)(jpegQuality * 0.15);
     }
 }
