@@ -32,7 +32,6 @@ public class StudentDashboard {
     private static GhostClient client;
     private static DiscoveryService discoveryService;
     private static StackPane root;
-    private static VBox lockOverlay;
     private static ImageView streamView;
     private static TextArea chatArea;
     private static VBox chatPanel;
@@ -162,13 +161,7 @@ public class StudentDashboard {
         StackPane.setMargin(notificationLabel, new Insets(20, 0, 0, 0));
         root.getChildren().add(notificationLabel);
 
-        // ========== LOCK OVERLAY (plain black screen, no text) ==========
-        lockOverlay = new VBox();
-        lockOverlay.setStyle("-fx-background-color: black;");
-        lockOverlay.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
-        lockOverlay.setVisible(false);
-        StackPane.setAlignment(lockOverlay, Pos.CENTER);
-        root.getChildren().add(lockOverlay);
+
 
         // ========== CHAT PANEL (Slide-in) ==========
         chatPanel = createChatPanel();
@@ -563,11 +556,10 @@ public class StudentDashboard {
         Platform.runLater(() -> {
             switch (packet.getType()) {
                 case LOCK:
-                    lockOverlay.setVisible(true);
-                    lockOverlay.toFront();
+                    PythonBridge.execute("lock");
                     break;
                 case UNLOCK:
-                    lockOverlay.setVisible(false);
+                    // System unlock is handled by Windows login
                     break;
                 case MSG:
                     if (chatArea != null) {
