@@ -4,6 +4,7 @@ import com.ghost.database.User;
 import com.ghost.net.CommandPacket;
 import com.ghost.net.DiscoveryService;
 import com.ghost.net.GhostServer;
+import com.ghost.util.IconUtil;
 import com.ghost.util.ScreenCapture;
 import com.ghost.util.SystemTrayManager;
 import javafx.animation.FadeTransition;
@@ -36,6 +37,7 @@ public class AdminDashboard {
     private static Map<String, ImageView> studentImages = new HashMap<>();
 
     public static void show(Stage stage, User user) {
+        IconUtil.setIcon(stage);
         if (server == null) {
             server = new GhostServer();
             server.setScreenListener(new GhostServer.ScreenUpdateListener() {
@@ -510,6 +512,7 @@ public class AdminDashboard {
             return;
 
         Stage fullscreenStage = new Stage();
+        IconUtil.setIcon(fullscreenStage);
         fullscreenStage.setTitle("Viewing: " + studentName);
 
         ImageView fullView = new ImageView(screenshot);

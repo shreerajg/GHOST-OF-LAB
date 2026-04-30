@@ -11,6 +11,9 @@ public class Main extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        // Set application icon for taskbar
+        com.ghost.util.IconUtil.setIcon(primaryStage);
+
         // Prevent JavaFX from exiting when all windows are hidden (needed for system
         // tray)
         Platform.setImplicitExit(false);

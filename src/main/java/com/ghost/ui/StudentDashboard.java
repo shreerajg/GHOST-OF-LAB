@@ -5,6 +5,7 @@ import com.ghost.net.CommandPacket;
 import com.ghost.net.DiscoveryService;
 import com.ghost.net.GhostClient;
 import com.ghost.util.HostsFileManager;
+import com.ghost.util.IconUtil;
 import com.ghost.util.PythonBridge;
 import com.ghost.util.SystemTrayManager;
 import javafx.animation.FadeTransition;
@@ -45,6 +46,7 @@ public class StudentDashboard {
     private static String currentUsername;
 
     public static void show(Stage stage, User user) {
+        IconUtil.setIcon(stage);
         currentUsername = user.getUsername();
         // Create downloads folder
         new File(downloadFolder).mkdirs();
@@ -696,6 +698,7 @@ public class StudentDashboard {
         }
 
         Stage fullscreenStage = new Stage();
+        IconUtil.setIcon(fullscreenStage);
         fullscreenStage.setTitle("📺 Admin Live Stream - Fullscreen (ESC to close)");
 
         ImageView fullView = new ImageView(streamView.getImage());

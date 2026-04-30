@@ -1,6 +1,7 @@
 package com.ghost.ui;
 
 import com.ghost.database.DatabaseManager;
+import com.ghost.util.IconUtil;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -11,6 +12,7 @@ import javafx.stage.Stage;
 public class StudentRegistrationView {
 
     public static void show(Stage stage) {
+        IconUtil.setIcon(stage);
         VBox root = new VBox(12);
         root.setPadding(new Insets(20));
         root.setAlignment(Pos.CENTER);

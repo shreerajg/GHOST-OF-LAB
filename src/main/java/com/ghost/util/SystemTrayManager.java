@@ -40,13 +40,17 @@ public class SystemTrayManager {
         try {
             tray = SystemTray.getSystemTray();
 
-            // Create tray icon — guard against missing resource (getResource returns null
-            // if ghost_icon.png is not in the classpath; passing null to createImage()
-            // causes a deferred NPE on the image-fetcher thread).
+            // Load and wait for the image using ImageIcon
             java.net.URL iconUrl = SystemTrayManager.class.getResource("/ghost_icon.png");
-            Image image = (iconUrl != null)
-                    ? Toolkit.getDefaultToolkit().createImage(iconUrl)
-                    : createDefaultIcon();
+            Image image;
+            if (iconUrl != null) {
+                // Use ImageIcon to force synchronous loading
+                image = new javax.swing.ImageIcon(iconUrl).getImage();
+                // Scale to typical tray icon size for stability
+                image = image.getScaledInstance(16, 16, Image.SCALE_SMOOTH);
+            } else {
+                image = createDefaultIcon();
+            }
 
             PopupMenu popup = createPopupMenu(role);
             trayIcon = new TrayIcon(image, "GHOST - " + role, popup);
