@@ -162,22 +162,12 @@ public class StudentDashboard {
         StackPane.setMargin(notificationLabel, new Insets(20, 0, 0, 0));
         root.getChildren().add(notificationLabel);
 
-        // ========== LOCK OVERLAY ==========
-        lockOverlay = new VBox(20);
-        lockOverlay.setAlignment(Pos.CENTER);
-        lockOverlay.setStyle("-fx-background-color: rgba(0,0,0,0.95);");
+        // ========== LOCK OVERLAY (plain black screen, no text) ==========
+        lockOverlay = new VBox();
+        lockOverlay.setStyle("-fx-background-color: black;");
+        lockOverlay.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
         lockOverlay.setVisible(false);
-
-        Label lockIcon = new Label("🔒");
-        lockIcon.setStyle("-fx-font-size: 80px;");
-
-        Label lockText = new Label("SYSTEM LOCKED");
-        lockText.setStyle("-fx-text-fill: #e74c3c; -fx-font-size: 48px; -fx-font-weight: bold;");
-
-        Label lockSubtext = new Label("Pay attention to your instructor");
-        lockSubtext.setStyle("-fx-text-fill: #888; -fx-font-size: 18px;");
-
-        lockOverlay.getChildren().addAll(lockIcon, lockText, lockSubtext);
+        StackPane.setAlignment(lockOverlay, Pos.CENTER);
         root.getChildren().add(lockOverlay);
 
         // ========== CHAT PANEL (Slide-in) ==========
@@ -575,17 +565,9 @@ public class StudentDashboard {
                 case LOCK:
                     lockOverlay.setVisible(true);
                     lockOverlay.toFront();
-                    // Only show 'pay attention' if student is NOT watching admin stream
-                    // (if they're watching the stream, they ARE paying attention)
-                    if (streamView == null || streamView.getImage() == null) {
-                        showNotification("🔒 Pay attention to your instructor!");
-                    } else {
-                        showNotification("🔒 Screen locked by Admin");
-                    }
                     break;
                 case UNLOCK:
                     lockOverlay.setVisible(false);
-                    showNotification("🔓 Screen unlocked");
                     break;
                 case MSG:
                     if (chatArea != null) {
