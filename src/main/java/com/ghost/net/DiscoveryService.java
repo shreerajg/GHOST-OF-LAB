@@ -72,6 +72,12 @@ public class DiscoveryService {
                             }
                         }
 
+                        // --- Unicast fallback for switch port isolation ---
+                        // Managed lab switches with "port isolation" drop broadcasts to
+                        // isolated ports (PC3/PC4) but MUST forward unicast per-host.
+                        // Scan .1-.254 of the local /24 and send directly to each IP.
+                        sendUnicastToSubnet(data, localIp);
+
 
                         Thread.sleep(BROADCAST_INTERVAL_MS);
                     } catch (InterruptedException e) {
@@ -92,6 +98,29 @@ public class DiscoveryService {
                     socket.close();
             }
         }, "DiscoveryBroadcaster").start();
+    }
+
+    /**
+     * Send unicast UDP to every host in the local /24 subnet.
+     * Bypasses switch port isolation which drops broadcasts but routes unicast.
+     */
+    private void sendUnicastToSubnet(byte[] data, String localIp) {
+        try {
+            int lastDot = localIp.lastIndexOf('.');
+            if (lastDot < 0) return;
+            String prefix = localIp.substring(0, lastDot + 1); // e.g. "172.21.250."
+            int myLastOctet = Integer.parseInt(localIp.substring(lastDot + 1));
+            for (int i = 1; i <= 254; i++) {
+                if (i == myLastOctet) continue;
+                try {
+                    InetAddress target = InetAddress.getByName(prefix + i);
+                    DatagramPacket unicast = new DatagramPacket(data, data.length, target, DISCOVERY_PORT);
+                    socket.send(unicast);
+                } catch (IOException ignored) {}
+            }
+        } catch (Exception e) {
+            System.err.println("[Discovery] Unicast scan error: " + e.getMessage());
+        }
     }
 
     /**

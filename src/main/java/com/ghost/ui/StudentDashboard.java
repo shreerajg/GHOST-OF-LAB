@@ -43,6 +43,7 @@ public class StudentDashboard {
     private static Circle statusDot;
     private static Label statusLabel;
     private static String currentUsername;
+    private static User currentUser; // kept for manual connect
     // Decode-gate: skip incoming frames when decoder is busy to avoid queue buildup
     private static volatile boolean decodingFrame = false;
 
@@ -52,6 +53,14 @@ public class StudentDashboard {
         // Create downloads folder
         new File(downloadFolder).mkdirs();
 
+        // ── DIAGNOSTIC: print this machine's IP at startup ──────────────────
+        // If PC3/PC4 show a different subnet (e.g. 10.x vs 192.168.1.x),
+        // that confirms a VLAN/subnet split — UDP broadcast never crosses it.
+        String myIp = com.ghost.net.DiscoveryService.getLocalIp();
+        System.out.println("[Student] This machine's LAN IP: " + myIp);
+        System.out.println("[Student] Listening for Admin UDP broadcast on port 5556...");
+        // ────────────────────────────────────────────────────────────────────
+
         // Initialize Discovery Service to auto-find Admin
         discoveryService = new DiscoveryService();
 
@@ -59,17 +68,23 @@ public class StudentDashboard {
         discoveryService.setListener((serverIp, port) -> {
             if (client == null) {
                 // First discovery - initialize and connect client
-                System.out.println("Discovery: Found Admin at " + serverIp + ":" + port);
+                System.out.println("[Student] UDP discovery found Admin at " + serverIp + ":" + port);
                 client = new GhostClient(serverIp, user);
                 client.setListener(packet -> handleCommand(packet));
                 client.connect();
+                // Update status label on FX thread
+                Platform.runLater(() -> {
+                    if (statusLabel != null) statusLabel.setText("Connecting to " + serverIp + "...");
+                });
             } else {
                 // Admin IP changed - update existing client
-                System.out.println("Discovery: Admin IP updated to " + serverIp);
+                System.out.println("[Student] Admin IP updated to " + serverIp);
                 client.updateAdminIp(serverIp);
             }
         });
         discoveryService.startListening();
+        // Store user ref for manual connect
+        currentUser = user;
 
         root = new StackPane();
         root.setStyle("-fx-background-color: linear-gradient(to bottom right, #0f0f1f, #1a1a3e);");
@@ -101,14 +116,33 @@ public class StudentDashboard {
         streamView.fitWidthProperty().bind(streamBox.widthProperty().subtract(20));
         streamView.fitHeightProperty().bind(streamBox.heightProperty().subtract(20));
 
-        Label waitingLabel = new Label("⏳ Waiting for Admin to start screen share...");
-        waitingLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 18px;");
-        waitingLabel.setId("waitingLabel");
+        // Waiting label + manual connect button
+        VBox waitingBox = new VBox(16);
+        waitingBox.setAlignment(Pos.CENTER);
+        waitingBox.setId("waitingLabel"); // keep ID so existing lookup still works
+
+        Label waitingLabel = new Label("⏳ Searching for Admin via UDP broadcast...");
+        waitingLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 16px;");
+
+        // Diagnostic: show this PC's IP so you can compare subnets visually
+        Label myIpLabel = new Label("This PC: " + com.ghost.net.DiscoveryService.getLocalIp());
+        myIpLabel.setStyle("-fx-text-fill: #444; -fx-font-size: 11px; -fx-font-family: 'Consolas';");
+
+        Label orLabel = new Label("— or —");
+        orLabel.setStyle("-fx-text-fill: #444; -fx-font-size: 12px;");
+
+        Button manualConnectBtn = new Button("🔌 Connect Manually (type Admin IP)");
+        manualConnectBtn.setStyle(
+            "-fx-background-color: #2980b9; -fx-text-fill: white; -fx-font-weight: bold; " +
+            "-fx-background-radius: 20; -fx-padding: 10 20; -fx-cursor: hand;");
+        manualConnectBtn.setOnAction(e -> connectToAdminManually());
+
+        waitingBox.getChildren().addAll(waitingLabel, myIpLabel, orLabel, manualConnectBtn);
 
         // Click to fullscreen
         streamBox.setOnMouseClicked(e -> openFullScreenStream());
 
-        streamBox.getChildren().addAll(waitingLabel, streamView);
+        streamBox.getChildren().addAll(waitingBox, streamView);
         streamContainer.getChildren().addAll(streamTitle, streamBox);
         VBox.setVgrow(streamContainer, Priority.ALWAYS);
         VBox.setVgrow(streamBox, Priority.ALWAYS);
