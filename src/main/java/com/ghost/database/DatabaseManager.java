@@ -8,8 +8,19 @@ import java.util.List;
 public class DatabaseManager {
 
     public static void init() {
+        System.out.println("[DB] Connecting to: " + Config.DB_URL);
         try (Connection conn = DriverManager.getConnection(Config.DB_URL)) {
             if (conn != null) {
+                System.out.println("[DB] Connected successfully.");
+
+                // Set WAL mode: allows multiple readers + 1 writer concurrently.
+                // This is important on shared drives (OneDrive) where multiple
+                // processes might open the same file — WAL reduces lock contention.
+                try (Statement wal = conn.createStatement()) {
+                    wal.execute("PRAGMA journal_mode=WAL;");
+                    wal.execute("PRAGMA busy_timeout=5000;"); // wait up to 5s for locks
+                }
+
                 String sql = "CREATE TABLE IF NOT EXISTS users (" +
                         "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                         "username TEXT UNIQUE NOT NULL, " +
@@ -29,9 +40,13 @@ public class DatabaseManager {
 
                 // Create default admin if not exists
                 createDefaultAdmin(conn);
+                System.out.println("[DB] Initialization complete.");
             }
         } catch (SQLException e) {
-            System.err.println("Database initialization failed: " + e.getMessage());
+            // Print full stack trace so it's visible in console/logs
+            System.err.println("[DB] FATAL: Database initialization failed: " + e.getMessage());
+            System.err.println("[DB] DB URL was: " + Config.DB_URL);
+            e.printStackTrace();
         }
     }
 
