@@ -20,15 +20,15 @@ public class ScreenCapture {
     private static Rectangle screenRect;
 
     // Reused across frames to avoid GC pressure
-    private static BufferedImage captureBuffer;   // raw Robot pixels
-    private static BufferedImage scaleBuffer;     // down-scaled frame
-    private static Graphics2D   scaleG;
+    private static BufferedImage captureBuffer; // raw Robot pixels
+    private static BufferedImage scaleBuffer; // down-scaled frame
+    private static Graphics2D scaleG;
     private static ByteArrayOutputStream jpegBuf = new ByteArrayOutputStream(64 * 1024);
-    private static ImageWriter  jpegWriter;
+    private static ImageWriter jpegWriter;
     private static ImageWriteParam jpegParam;
 
     // Target capture dimensions (720p-equivalent, 16:9)
-    private static final int STREAM_WIDTH  = 1280;
+    private static final int STREAM_WIDTH = 1280;
     private static final int STREAM_HEIGHT = 720;
 
     // JPEG quality: 0.60 is indistinguishable from higher on a LAN thumbnail
@@ -43,34 +43,34 @@ public class ScreenCapture {
 
     // Cursor shape pixels (outline=1, fill=2)
     private static final int[][] CURSOR_SHAPE = {
-            {1,0,0,0,0,0,0,0,0,0,0,0},
-            {1,1,0,0,0,0,0,0,0,0,0,0},
-            {1,2,1,0,0,0,0,0,0,0,0,0},
-            {1,2,2,1,0,0,0,0,0,0,0,0},
-            {1,2,2,2,1,0,0,0,0,0,0,0},
-            {1,2,2,2,2,1,0,0,0,0,0,0},
-            {1,2,2,2,2,2,1,0,0,0,0,0},
-            {1,2,2,2,2,2,2,1,0,0,0,0},
-            {1,2,2,2,2,2,2,2,1,0,0,0},
-            {1,2,2,2,2,2,2,2,2,1,0,0},
-            {1,2,2,2,2,2,2,2,2,2,1,0},
-            {1,2,2,2,2,2,2,2,2,2,2,1},
-            {1,2,2,2,2,2,2,1,1,1,1,1},
-            {1,2,2,2,1,2,2,1,0,0,0,0},
-            {1,2,2,1,0,1,2,2,1,0,0,0},
-            {1,2,1,0,0,1,2,2,1,0,0,0},
-            {1,1,0,0,0,0,1,2,2,1,0,0},
-            {1,0,0,0,0,0,1,2,2,1,0,0},
-            {0,0,0,0,0,0,0,1,1,0,0,0},
+            { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+            { 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+            { 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+            { 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0 },
+            { 1, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0 },
+            { 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0 },
+            { 1, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0 },
+            { 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0 },
+            { 1, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0 },
+            { 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0 },
+            { 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0 },
+            { 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1 },
+            { 1, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1 },
+            { 1, 2, 2, 2, 1, 2, 2, 1, 0, 0, 0, 0 },
+            { 1, 2, 2, 1, 0, 1, 2, 2, 1, 0, 0, 0 },
+            { 1, 2, 1, 0, 0, 1, 2, 2, 1, 0, 0, 0 },
+            { 1, 1, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0 },
+            { 1, 0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0 },
+            { 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0 },
     };
 
     private static volatile boolean asyncRunning = false;
 
     // Legacy compat constants
-    public static final double QUALITY_LOW    = 0.3;
+    public static final double QUALITY_LOW = 0.3;
     public static final double QUALITY_MEDIUM = 0.5;
-    public static final double QUALITY_HIGH   = 0.7;
-    public static final double QUALITY_ULTRA  = 0.9;
+    public static final double QUALITY_HIGH = 0.7;
+    public static final double QUALITY_ULTRA = 0.9;
 
     static {
         try {
@@ -86,19 +86,20 @@ public class ScreenCapture {
 
     private static void initBuffers() {
         captureBuffer = new BufferedImage(screenRect.width, screenRect.height, BufferedImage.TYPE_INT_RGB);
-        scaleBuffer   = new BufferedImage(STREAM_WIDTH, STREAM_HEIGHT, BufferedImage.TYPE_INT_RGB);
-        scaleG        = scaleBuffer.createGraphics();
+        scaleBuffer = new BufferedImage(STREAM_WIDTH, STREAM_HEIGHT, BufferedImage.TYPE_INT_RGB);
+        scaleG = scaleBuffer.createGraphics();
         scaleG.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        scaleG.setRenderingHint(RenderingHints.KEY_RENDERING,     RenderingHints.VALUE_RENDER_SPEED);
-        scaleG.setRenderingHint(RenderingHints.KEY_DITHERING,     RenderingHints.VALUE_DITHER_DISABLE);
+        scaleG.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
+        scaleG.setRenderingHint(RenderingHints.KEY_DITHERING, RenderingHints.VALUE_DITHER_DISABLE);
     }
 
     private static void initJpegWriter() throws AWTException {
         try {
             java.util.Iterator<ImageWriter> it = ImageIO.getImageWritersByFormatName("jpg");
-            if (!it.hasNext()) throw new RuntimeException("No JPEG writer found");
+            if (!it.hasNext())
+                throw new RuntimeException("No JPEG writer found");
             jpegWriter = it.next();
-            jpegParam  = jpegWriter.getDefaultWriteParam();
+            jpegParam = jpegWriter.getDefaultWriteParam();
             jpegParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
             jpegParam.setCompressionQuality(JPEG_QUALITY);
         } catch (Exception e) {
@@ -116,8 +117,8 @@ public class ScreenCapture {
 
         // 3. Draw cursor
         drawMouseCursor(scaleG,
-            (double) STREAM_WIDTH  / screenRect.width,
-            (double) STREAM_HEIGHT / screenRect.height);
+                (double) STREAM_WIDTH / screenRect.width,
+                (double) STREAM_HEIGHT / screenRect.height);
 
         // 4. JPEG encode into reused ByteArrayOutputStream
         jpegBuf.reset(); // clears without reallocating the internal byte[]
@@ -133,22 +134,25 @@ public class ScreenCapture {
     private static void drawMouseCursor(Graphics2D g, double sx, double sy) {
         try {
             Point mp = MouseInfo.getPointerInfo().getLocation();
-            int mx = (int)(mp.x * sx);
-            int my = (int)(mp.y * sy);
+            int mx = (int) (mp.x * sx);
+            int my = (int) (mp.y * sy);
             for (int r = 0; r < CURSOR_SHAPE.length; r++) {
                 for (int c = 0; c < CURSOR_SHAPE[r].length; c++) {
                     int v = CURSOR_SHAPE[r][c];
-                    if (v == 0) continue;
+                    if (v == 0)
+                        continue;
                     g.setColor(v == 1 ? Color.BLACK : Color.WHITE);
                     g.fillRect(mx + c, my + r, 1, 1);
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
-    /** Start the async capture daemon. */
+    /** Start the async capture daemon.heheh */
     public static synchronized void startAsyncCapture() {
-        if (asyncRunning) return;
+        if (asyncRunning)
+            return;
         asyncRunning = true;
 
         Thread t = new Thread(() -> {
@@ -156,11 +160,16 @@ public class ScreenCapture {
                 long t0 = System.currentTimeMillis();
                 try {
                     captureFrame();
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 long elapsed = System.currentTimeMillis() - t0;
                 long sleep = FRAME_INTERVAL_MS - elapsed;
                 if (sleep > 0) {
-                    try { Thread.sleep(sleep); } catch (InterruptedException e) { break; }
+                    try {
+                        Thread.sleep(sleep);
+                    } catch (InterruptedException e) {
+                        break;
+                    }
                 }
             }
         }, "GhostScreenCapture");
@@ -181,7 +190,8 @@ public class ScreenCapture {
      */
     public static String getLatestFrame() {
         byte[] bytes = latestFrameBytes.getAndSet(null); // consume frame — prevents re-sending same frame
-        if (bytes == null) return null;
+        if (bytes == null)
+            return null;
         return Base64.getEncoder().encodeToString(bytes);
     }
 
@@ -201,17 +211,24 @@ public class ScreenCapture {
         return captureAsBase64(resolutionScale, JPEG_QUALITY);
     }
 
-    public static String captureHighQuality()   { return captureAsBase64(1.0, 0.90f); }
-    public static String captureForStreaming()   { return captureAsBase64(1.0, JPEG_QUALITY); }
+    public static String captureHighQuality() {
+        return captureAsBase64(1.0, 0.90f);
+    }
+
+    public static String captureForStreaming() {
+        return captureAsBase64(1.0, JPEG_QUALITY);
+    }
 
     public static BufferedImage decodeBase64(String base64) {
         try {
             byte[] bytes = Base64.getDecoder().decode(base64);
             return ImageIO.read(new java.io.ByteArrayInputStream(bytes));
-        } catch (Exception e) { return null; }
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public static int estimateFrameSize(double resolutionScale, float jpegQuality) {
-        return STREAM_WIDTH * STREAM_HEIGHT * (int)(jpegQuality * 0.15);
+        return STREAM_WIDTH * STREAM_HEIGHT * (int) (jpegQuality * 0.15);
     }
 }
