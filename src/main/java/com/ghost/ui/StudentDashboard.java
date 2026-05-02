@@ -43,7 +43,8 @@ public class StudentDashboard {
     private static Circle statusDot;
     private static Label statusLabel;
     private static String currentUsername;
-    private static User currentUser; // kept for manual connect
+    private static User currentUser;
+    private static VBox waitingBox;   // hidden once connected
     // Decode-gate: skip incoming frames when decoder is busy to avoid queue buildup
     private static volatile boolean decodingFrame = false;
 
@@ -67,16 +68,15 @@ public class StudentDashboard {
         // Wait for discovery to find admin before connecting
         discoveryService.setListener((serverIp, port) -> {
             if (client == null) {
-                // First discovery - initialize and connect client
                 System.out.println("[Student] UDP discovery found Admin at " + serverIp + ":" + port);
                 client = new GhostClient(serverIp, user);
                 client.setListener(packet -> handleCommand(packet));
                 client.connect();
                 Platform.runLater(() -> {
+                    hideWaitingBox();
                     if (statusLabel != null) statusLabel.setText("● Connected");
                 });
             } else {
-                // Admin IP changed - update existing client
                 System.out.println("[Student] Admin IP updated to " + serverIp);
                 client.updateAdminIp(serverIp);
             }
@@ -120,27 +120,17 @@ public class StudentDashboard {
         streamView.fitHeightProperty().bind(streamBox.heightProperty().subtract(20));
 
         // Waiting label + manual connect button
-        VBox waitingBox = new VBox(16);
+        waitingBox = new VBox(16);
         waitingBox.setAlignment(Pos.CENTER);
-        waitingBox.setId("waitingLabel"); // keep ID so existing lookup still works
+        waitingBox.setId("waitingLabel");
 
-        Label waitingLabel = new Label("⏳ Searching for Admin via UDP broadcast...");
+        Label waitingLabel = new Label("⏳ Connecting to Admin...");
         waitingLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 16px;");
 
-        // Diagnostic: show this PC's IP so you can compare subnets visually
         Label myIpLabel = new Label("This PC: " + com.ghost.net.DiscoveryService.getLocalIp());
         myIpLabel.setStyle("-fx-text-fill: #444; -fx-font-size: 11px; -fx-font-family: 'Consolas';");
 
-        Label orLabel = new Label("— or —");
-        orLabel.setStyle("-fx-text-fill: #444; -fx-font-size: 12px;");
-
-        Button manualConnectBtn = new Button("🔌 Connect Manually (type Admin IP)");
-        manualConnectBtn.setStyle(
-            "-fx-background-color: #2980b9; -fx-text-fill: white; -fx-font-weight: bold; " +
-            "-fx-background-radius: 20; -fx-padding: 10 20; -fx-cursor: hand;");
-        manualConnectBtn.setOnAction(e -> connectToAdminManually());
-
-        waitingBox.getChildren().addAll(waitingLabel, myIpLabel, orLabel, manualConnectBtn);
+        waitingBox.getChildren().addAll(waitingLabel, myIpLabel);
 
         // Click to fullscreen
         streamBox.setOnMouseClicked(e -> openFullScreenStream());
@@ -784,29 +774,28 @@ public class StudentDashboard {
      */
     private static void startTcpDiscoveryFallback(User user) {
         Thread scanner = new Thread(() -> {
-            try { Thread.sleep(6000); } catch (InterruptedException e) { return; }
-            if (client != null) return; // UDP already worked
+            // Give UDP discovery 3 seconds — if it hasn't worked by then, go TCP
+            try { Thread.sleep(3000); } catch (InterruptedException e) { return; }
+            if (client != null) return; // UDP already connected
 
             System.out.println("[Student] UDP timeout — starting TCP subnet scan...");
             Platform.runLater(() -> {
-                if (statusLabel != null) statusLabel.setText("Scanning network for Admin...");
+                if (statusLabel != null) statusLabel.setText("Scanning for Admin...");
             });
 
             String myIp = com.ghost.net.DiscoveryService.getLocalIp();
             int lastDot = myIp.lastIndexOf('.');
             if (lastDot < 0) return;
-            String prefix = myIp.substring(0, lastDot + 1);
-            int myOctet  = Integer.parseInt(myIp.substring(lastDot + 1));
+            String prefix   = myIp.substring(0, lastDot + 1); // e.g. "172.21.250."
+            int    myOctet  = Integer.parseInt(myIp.substring(lastDot + 1));
 
             for (int i = 1; i <= 254 && client == null; i++) {
                 if (i == myOctet) continue;
                 String target = prefix + i;
-                try (
-                    java.net.Socket probe = new java.net.Socket();
-                ) {
+                try (java.net.Socket probe = new java.net.Socket()) {
                     probe.connect(new java.net.InetSocketAddress(target, com.ghost.util.Config.SERVER_PORT), 200);
                     probe.setSoTimeout(300);
-                    java.io.PrintWriter pw = new java.io.PrintWriter(probe.getOutputStream(), true);
+                    java.io.PrintWriter pw  = new java.io.PrintWriter(probe.getOutputStream(), true);
                     java.io.BufferedReader br = new java.io.BufferedReader(
                             new java.io.InputStreamReader(probe.getInputStream()));
                     pw.println("GHOST_PING");
@@ -819,49 +808,31 @@ public class StudentDashboard {
                                 client = new GhostClient(adminIp, user);
                                 client.setListener(packet -> handleCommand(packet));
                                 client.connect();
-                                if (statusLabel != null) statusLabel.setText("● Connected via TCP scan");
+                                hideWaitingBox();
+                                if (statusLabel != null) statusLabel.setText("\u25cf Connected");
                             }
                         });
                         return; // found it — stop scanning
                     }
                 } catch (Exception ignored) {}
             }
-            System.out.println("[Student] TCP scan complete — no Ghost admin found on subnet.");
+            System.out.println("[Student] TCP scan complete — no Ghost admin found.");
         }, "GhostTcpDiscovery");
         scanner.setDaemon(true);
         scanner.start();
     }
 
-    /**
-     * Let the student manually type the admin's IP address and connect directly.
-     * Bypasses UDP discovery entirely — works even when switch port isolation
-     * or firewall blocks the UDP broadcast from reaching this machine.
-     */
+    /** Hides the "Connecting..." overlay once the student is connected. */
+    private static void hideWaitingBox() {
+        if (waitingBox != null) {
+            waitingBox.setVisible(false);
+            waitingBox.setManaged(false); // remove from layout so stream fills the space
+        }
+    }
+
+    /** Internal: connect directly to a known admin IP (no dialog). */
     private static void connectToAdminManually() {
-        javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog("172.21.250.46");
-        dialog.setTitle("Manual Connect");
-        dialog.setHeaderText("Connect directly to Admin");
-        dialog.setContentText("Enter Admin IP address:");
-
-        dialog.showAndWait().ifPresent(ip -> {
-            ip = ip.trim();
-            if (ip.isEmpty()) return;
-            final String adminIp = ip;
-
-            if (client == null) {
-                System.out.println("[Student] Manual connect to: " + adminIp);
-                client = new GhostClient(adminIp, currentUser);
-                client.setListener(packet -> handleCommand(packet));
-                client.connect();
-            } else {
-                System.out.println("[Student] Manual IP update to: " + adminIp);
-                client.updateAdminIp(adminIp);
-            }
-
-            Platform.runLater(() -> {
-                if (statusLabel != null) statusLabel.setText("Connecting to " + adminIp + "...");
-                showNotification("🔌 Connecting to " + adminIp + "...");
-            });
-        });
+        // This is now only used internally — the button no longer shows after build.
+        // Kept for compatibility; TCP scan calls Platform.runLater directly instead.
     }
 }
