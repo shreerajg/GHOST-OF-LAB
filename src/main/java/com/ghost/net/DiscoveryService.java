@@ -156,10 +156,13 @@ public class DiscoveryService {
                 } catch (InterruptedException e) {
                     break;
                 } catch (IOException e) {
+                    // BUG FIX: Do NOT break on transient network errors.
+                    // A momentary blip must not kill discovery permanently.
                     if (running.get()) {
-                        System.err.println("Discovery error: " + e.getMessage());
+                        System.err.println("Discovery: receive error (will retry): " + e.getMessage());
+                        try { Thread.sleep(1000); } catch (InterruptedException ie) { break; }
                     }
-                    break;
+                    // continue the while loop — keep listening
                 }
             }
         }, "DiscoveryListener").start();
@@ -173,29 +176,79 @@ public class DiscoveryService {
     }
 
     /**
-     * Get local IP address (not loopback).
-     * Scans all active network interfaces.
+     * Get the best local LAN IP address for admin broadcasting.
+     *
+     * Problem: PCs in a lab often have many network interfaces:
+     * - VirtualBox Host-Only (192.168.56.x)
+     * - VMware (192.168.xxx.x)
+     * - Hyper-V vSwitch
+     * - Bluetooth
+     * - Wi-Fi / Ethernet (the REAL LAN adapter)
+     *
+     * The old code just returned the FIRST non-loopback IPv4 address,
+     * which could be a virtual adapter — causing all students to get
+     * an unreachable IP and fail to connect.
+     *
+     * Fix: Score each interface. Skip known virtual/software adapters by
+     * name. Prefer the highest-scored real physical NIC.
      */
     public static String getLocalIp() {
+        String bestIp = null;
+        int bestScore = -1;
+
         try {
-            // Try to find a non-loopback address
             java.util.Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
             while (interfaces.hasMoreElements()) {
                 NetworkInterface iface = interfaces.nextElement();
-                if (iface.isLoopback() || !iface.isUp())
-                    continue;
+                if (iface.isLoopback() || !iface.isUp()) continue;
 
-                java.util.Enumeration<InetAddress> addresses = iface.getInetAddresses();
-                while (addresses.hasMoreElements()) {
-                    InetAddress addr = addresses.nextElement();
+                String name = iface.getName().toLowerCase();
+                String displayName = iface.getDisplayName() != null ? iface.getDisplayName().toLowerCase() : "";
+
+                // Score: higher = more likely to be the real LAN adapter.
+                // Virtual / software adapters get a penalty.
+                int score = 10;
+                if (name.contains("vbox") || displayName.contains("virtualbox")) score -= 8;
+                if (name.contains("vmnet") || displayName.contains("vmware"))    score -= 8;
+                if (name.contains("hyper") || displayName.contains("hyper-v"))   score -= 8;
+                if (name.contains("docker") || displayName.contains("docker"))   score -= 8;
+                if (displayName.contains("bluetooth"))                           score -= 8;
+                if (displayName.contains("virtual") || displayName.contains("pseudo")) score -= 6;
+                // Physical Ethernet and Wi-Fi get a bonus
+                if (displayName.contains("ethernet") || displayName.contains("lan")) score += 3;
+                if (displayName.contains("wi-fi") || displayName.contains("wireless")) score += 2;
+
+                for (InterfaceAddress ifAddr : iface.getInterfaceAddresses()) {
+                    InetAddress addr = ifAddr.getAddress();
                     if (addr instanceof Inet4Address && !addr.isLoopbackAddress()) {
-                        return addr.getHostAddress();
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestIp = addr.getHostAddress();
+                            System.out.println("[Discovery] Interface candidate: " + displayName
+                                    + " (" + bestIp + ") score=" + score);
+                        }
                     }
                 }
             }
         } catch (SocketException e) {
             e.printStackTrace();
         }
+
+        if (bestIp != null) {
+            return bestIp;
+        }
+
+        // Last-resort fallback via UDP trick (connects to 8.8.8.8 without sending data
+        // — OS picks the right source interface automatically)
+        try (java.net.DatagramSocket s = new java.net.DatagramSocket()) {
+            s.connect(InetAddress.getByName("8.8.8.8"), 80);
+            String ip = s.getLocalAddress().getHostAddress();
+            if (ip != null && !ip.startsWith("0.")) {
+                System.out.println("[Discovery] Fallback UDP trick IP: " + ip);
+                return ip;
+            }
+        } catch (Exception ignored) {}
+
         return "127.0.0.1";
     }
 }

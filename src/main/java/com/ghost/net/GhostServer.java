@@ -15,9 +15,12 @@ import java.util.concurrent.Executors;
 public class GhostServer {
     private ServerSocket serverSocket;
     private boolean running = false;
-    // Use fixed thread pool (4 threads) for better CPU allocation across 2 cores
-    // This prevents excessive thread creation and leaves CPU for user's side tasks
-    private ExecutorService pool = Executors.newFixedThreadPool(4);
+    // Use a cached thread pool: each student connection gets its own thread.
+    // The old fixed pool of 4 meant only 4 students could connect at once —
+    // any additional students would queue indefinitely with no screen updates.
+    // Student handler threads are I/O-blocked (waiting for packets), not CPU-bound,
+    // so creating one thread per student is the correct approach.
+    private ExecutorService pool = Executors.newCachedThreadPool();
     private List<ClientHandler> clients = new ArrayList<>();
     private Map<String, ClientHandler> clientsByName = new HashMap<>();
     private Gson gson = new Gson();
