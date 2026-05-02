@@ -765,4 +765,39 @@ public class StudentDashboard {
         updateThread.setDaemon(true);
         updateThread.start();
     }
+
+    /**
+     * Let the student manually type the admin's IP address and connect directly.
+     * Bypasses UDP discovery entirely — works even when switch port isolation
+     * or firewall blocks the UDP broadcast from reaching this machine.
+     */
+    private static void connectToAdminManually() {
+        javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog("172.21.250.46");
+        dialog.setTitle("Manual Connect");
+        dialog.setHeaderText("Connect directly to Admin");
+        dialog.setContentText("Enter Admin IP address:");
+
+        dialog.showAndWait().ifPresent(ip -> {
+            ip = ip.trim();
+            if (ip.isEmpty()) return;
+            final String adminIp = ip;
+
+            if (client == null) {
+                // No existing connection — create fresh client
+                System.out.println("[Student] Manual connect to: " + adminIp);
+                client = new GhostClient(adminIp, currentUser);
+                client.setListener(packet -> handleCommand(packet));
+                client.connect();
+            } else {
+                // Already have a client — just update the IP (forces reconnect)
+                System.out.println("[Student] Manual IP update to: " + adminIp);
+                client.updateAdminIp(adminIp);
+            }
+
+            Platform.runLater(() -> {
+                if (statusLabel != null) statusLabel.setText("Connecting to " + adminIp + "...");
+                showNotification("🔌 Connecting to " + adminIp + "...");
+            });
+        });
+    }
 }
