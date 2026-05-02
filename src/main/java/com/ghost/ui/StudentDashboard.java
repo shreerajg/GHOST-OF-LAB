@@ -72,9 +72,8 @@ public class StudentDashboard {
                 client = new GhostClient(serverIp, user);
                 client.setListener(packet -> handleCommand(packet));
                 client.connect();
-                // Update status label on FX thread
                 Platform.runLater(() -> {
-                    if (statusLabel != null) statusLabel.setText("Connecting to " + serverIp + "...");
+                    if (statusLabel != null) statusLabel.setText("● Connected");
                 });
             } else {
                 // Admin IP changed - update existing client
@@ -83,6 +82,10 @@ public class StudentDashboard {
             }
         });
         discoveryService.startListening();
+
+        // Auto TCP fallback: if UDP blocked (switch port isolation), scan subnet via TCP
+        startTcpDiscoveryFallback(user);
+
         // Store user ref for manual connect
         currentUser = user;
 
@@ -767,6 +770,69 @@ public class StudentDashboard {
     }
 
     /**
+     * TCP-based discovery fallback for when UDP is blocked by switch port isolation.
+     *
+     * How it works:
+     * 1. Waits 6 seconds for UDP discovery to succeed first.
+     * 2. If still not connected, scans every IP in the local /24 subnet on port 5555.
+     * 3. Sends "GHOST_PING" — the Ghost server replies "GHOST_PONG".
+     * 4. On match, creates a GhostClient automatically (no user action needed).
+     *
+     * Why TCP works when UDP doesn't:
+     * Switch port isolation drops broadcast/unicast packets between isolated ports,
+     * but TCP traffic routed through the gateway (uplink) is always allowed.
+     */
+    private static void startTcpDiscoveryFallback(User user) {
+        Thread scanner = new Thread(() -> {
+            try { Thread.sleep(6000); } catch (InterruptedException e) { return; }
+            if (client != null) return; // UDP already worked
+
+            System.out.println("[Student] UDP timeout — starting TCP subnet scan...");
+            Platform.runLater(() -> {
+                if (statusLabel != null) statusLabel.setText("Scanning network for Admin...");
+            });
+
+            String myIp = com.ghost.net.DiscoveryService.getLocalIp();
+            int lastDot = myIp.lastIndexOf('.');
+            if (lastDot < 0) return;
+            String prefix = myIp.substring(0, lastDot + 1);
+            int myOctet  = Integer.parseInt(myIp.substring(lastDot + 1));
+
+            for (int i = 1; i <= 254 && client == null; i++) {
+                if (i == myOctet) continue;
+                String target = prefix + i;
+                try (
+                    java.net.Socket probe = new java.net.Socket();
+                ) {
+                    probe.connect(new java.net.InetSocketAddress(target, com.ghost.util.Config.SERVER_PORT), 200);
+                    probe.setSoTimeout(300);
+                    java.io.PrintWriter pw = new java.io.PrintWriter(probe.getOutputStream(), true);
+                    java.io.BufferedReader br = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(probe.getInputStream()));
+                    pw.println("GHOST_PING");
+                    String resp = br.readLine();
+                    if ("GHOST_PONG".equals(resp)) {
+                        System.out.println("[Student] TCP found Ghost admin at: " + target);
+                        final String adminIp = target;
+                        Platform.runLater(() -> {
+                            if (client == null) {
+                                client = new GhostClient(adminIp, user);
+                                client.setListener(packet -> handleCommand(packet));
+                                client.connect();
+                                if (statusLabel != null) statusLabel.setText("● Connected via TCP scan");
+                            }
+                        });
+                        return; // found it — stop scanning
+                    }
+                } catch (Exception ignored) {}
+            }
+            System.out.println("[Student] TCP scan complete — no Ghost admin found on subnet.");
+        }, "GhostTcpDiscovery");
+        scanner.setDaemon(true);
+        scanner.start();
+    }
+
+    /**
      * Let the student manually type the admin's IP address and connect directly.
      * Bypasses UDP discovery entirely — works even when switch port isolation
      * or firewall blocks the UDP broadcast from reaching this machine.
@@ -783,13 +849,11 @@ public class StudentDashboard {
             final String adminIp = ip;
 
             if (client == null) {
-                // No existing connection — create fresh client
                 System.out.println("[Student] Manual connect to: " + adminIp);
                 client = new GhostClient(adminIp, currentUser);
                 client.setListener(packet -> handleCommand(packet));
                 client.connect();
             } else {
-                // Already have a client — just update the IP (forces reconnect)
                 System.out.println("[Student] Manual IP update to: " + adminIp);
                 client.updateAdminIp(adminIp);
             }

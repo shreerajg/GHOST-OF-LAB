@@ -117,6 +117,22 @@ public class GhostServer {
                 out = new PrintWriter(socket.getOutputStream(), true);
                 in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
+                // Handle TCP discovery probe (used when UDP is blocked by switch port isolation)
+                // Student sends "GHOST_PING", we reply "GHOST_PONG" so they know this is Ghost.
+                String firstLine = in.readLine();
+                if (firstLine == null) return;
+
+                if ("GHOST_PING".equals(firstLine.trim())) {
+                    out.println("GHOST_PONG");
+                    return; // close — student now knows our IP and will create a real GhostClient
+                }
+
+                // Normal packet handling — process the first line then continue loop
+                try {
+                    CommandPacket packet = gson.fromJson(firstLine, CommandPacket.class);
+                    handlePacket(packet);
+                } catch (Exception ignored) {}
+
                 String inputLine;
                 while ((inputLine = in.readLine()) != null) {
                     try {
