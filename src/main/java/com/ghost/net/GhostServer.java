@@ -146,6 +146,10 @@ public class GhostServer {
                 // Client disconnected
             } finally {
                 System.out.println("Client disconnected: " + clientName);
+
+                // Stamp the exact disconnect time as Last Seen in attendance
+                com.ghost.util.AttendanceTracker.notifyDisconnect(clientName);
+
                 clients.remove(this);
                 clientsByName.remove(clientName);
 

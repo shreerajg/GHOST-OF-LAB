@@ -98,6 +98,21 @@ public class AttendanceTracker {
     }
 
     /**
+     * Record the exact moment a student disconnects as their Last Seen time.
+     * Without this, Last Seen stayed frozen at First Connected (or last reconnect).
+     */
+    public static void notifyDisconnect(String username) {
+        if (username == null || username.isEmpty() || "Unknown".equals(username))
+            return;
+        StudentAttendance attendance = attendanceMap.get(username);
+        if (attendance != null) {
+            attendance.updateLastSeen();
+            System.out.println("[Attendance] Last seen updated for: " + username
+                    + " at " + attendance.getLastSeenFormatted());
+        }
+    }
+
+    /**
      * Clear all attendance records (for new session)
      */
     public static void clearRecords() {
