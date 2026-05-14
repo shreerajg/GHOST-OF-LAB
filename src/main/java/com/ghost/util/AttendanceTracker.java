@@ -72,20 +72,15 @@ public class AttendanceTracker {
 
             try (PrintWriter writer = new PrintWriter(new FileWriter(csvFile))) {
                 // Write CSV header
-                writer.println("Roll Number,Username,Class,Division,First Connected,Last Seen");
+                writer.println("Roll Number,Username,Class,Division");
 
                 // Write student records
                 for (StudentAttendance student : students) {
-                    // All string fields are double-quoted so Excel treats them as text.
-                    // Without quotes, Excel auto-parses "2026-05-15 01:00:00" as a date
-                    // serial number and shows ### when the column is too narrow.
-                    writer.printf("%d,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"%n",
+                    writer.printf("%d,\"%s\",\"%s\",\"%s\"%n",
                             student.getRollNumber(),
                             student.getUsername(),
                             student.getClassName(),
-                            student.getDivision(),
-                            student.getFirstConnectedFormatted(),
-                            student.getLastSeenFormatted());
+                            student.getDivision());
                 }
 
                 generatedFiles.add(csvFile.getAbsolutePath());
