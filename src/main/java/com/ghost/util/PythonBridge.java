@@ -3,6 +3,7 @@ package com.ghost.util;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 public class PythonBridge {
     private static final String SCRIPT_PATH = "python_modules/executor.py";
@@ -97,9 +98,17 @@ public class PythonBridge {
                     pb.command("python", "../python_modules/ai_interface.py", prompt);
                 }
 
+                // Fix Windows encoding: force Python to use UTF-8 for stdout
+                // Without this, Python's print() silently crashes on non-cp1252 chars
+                // (e.g. emojis in AI response), leaving stdout empty and UI showing "[AI]: "
+                pb.environment().put("PYTHONIOENCODING", "utf-8");
+                pb.environment().put("PYTHONUNBUFFERED", "1");  // flush output immediately
+
                 Process p = pb.start();
 
-                BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                // Read as UTF-8 to match Python's PYTHONIOENCODING=utf-8
+                BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
                 StringBuilder response = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
