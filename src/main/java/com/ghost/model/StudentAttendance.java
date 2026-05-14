@@ -61,6 +61,7 @@ public class StudentAttendance {
     }
 
     public String getClassDivision() {
-        return className + division;
+        String combined = (className + division).trim();
+        return combined.isEmpty() ? "General" : combined;
     }
 }

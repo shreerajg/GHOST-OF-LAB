@@ -76,7 +76,10 @@ public class AttendanceTracker {
 
                 // Write student records
                 for (StudentAttendance student : students) {
-                    writer.printf("%d,%s,%s,%s,%s,%s%n",
+                    // All string fields are double-quoted so Excel treats them as text.
+                    // Without quotes, Excel auto-parses "2026-05-15 01:00:00" as a date
+                    // serial number and shows ### when the column is too narrow.
+                    writer.printf("%d,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"%n",
                             student.getRollNumber(),
                             student.getUsername(),
                             student.getClassName(),
