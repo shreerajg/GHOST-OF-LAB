@@ -119,18 +119,113 @@ public class StudentDashboard {
         streamView.fitWidthProperty().bind(streamBox.widthProperty().subtract(20));
         streamView.fitHeightProperty().bind(streamBox.heightProperty().subtract(20));
 
-        // Waiting label + manual connect button
+        // Waiting label + manual connect box
         waitingBox = new VBox(16);
         waitingBox.setAlignment(Pos.CENTER);
         waitingBox.setId("waitingLabel");
 
-        Label waitingLabel = new Label("⏳ Connecting to Admin...");
-        waitingLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 16px;");
+        Label waitingLabel = new Label("⏳ Searching for Admin...");
+        waitingLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 16px;");
 
         Label myIpLabel = new Label("This PC: " + com.ghost.net.DiscoveryService.getLocalIp());
         myIpLabel.setStyle("-fx-text-fill: #444; -fx-font-size: 11px; -fx-font-family: 'Consolas';");
 
-        waitingBox.getChildren().addAll(waitingLabel, myIpLabel);
+        // ── Manual IP entry (fallback when auto-discovery is blocked) ──────────
+        Label orLabel = new Label("─── or connect manually ───");
+        orLabel.setStyle("-fx-text-fill: #444; -fx-font-size: 11px;");
+
+        // Store field reference so connectToAdminManually() can read it
+        TextField manualIpField = new TextField();
+        manualIpField.setId("manualIpField");
+        manualIpField.setPromptText("Admin IP  e.g. 192.168.1.5");
+        manualIpField.setMaxWidth(220);
+        manualIpField.setStyle(
+                "-fx-background-color: #1a1a2e; " +
+                "-fx-text-fill: #00ffaa; " +
+                "-fx-prompt-text-fill: #555; " +
+                "-fx-border-color: #333; " +
+                "-fx-border-radius: 8; " +
+                "-fx-background-radius: 8; " +
+                "-fx-padding: 8 14; " +
+                "-fx-font-family: 'Consolas'; " +
+                "-fx-font-size: 13px;");
+
+        Button manualConnectBtn = new Button("⚡ Connect");
+        manualConnectBtn.setStyle(
+                "-fx-background-color: #00ffaa; " +
+                "-fx-text-fill: #1a1a2e; " +
+                "-fx-font-weight: bold; " +
+                "-fx-background-radius: 8; " +
+                "-fx-padding: 8 22; " +
+                "-fx-cursor: hand;");
+        manualConnectBtn.setOnMouseEntered(e -> manualConnectBtn.setOpacity(0.85));
+        manualConnectBtn.setOnMouseExited(e  -> manualConnectBtn.setOpacity(1.0));
+        manualConnectBtn.setOnAction(e -> {
+            String ip = manualIpField.getText().trim();
+            if (ip.isEmpty()) {
+                showNotification("⚠️ Please enter the Admin IP address");
+                return;
+            }
+            // Basic IPv4 format check
+            if (!ip.matches("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}")) {
+                showNotification("⚠️ Invalid IP format — use e.g. 192.168.1.5");
+                return;
+            }
+            manualConnectBtn.setDisable(true);
+            manualConnectBtn.setText("Connecting...");
+            final String adminIp = ip;
+            new Thread(() -> {
+                try {
+                    // Quick TCP ping to confirm this is actually a Ghost server
+                    java.net.Socket probe = new java.net.Socket();
+                    probe.connect(new java.net.InetSocketAddress(adminIp, com.ghost.util.Config.SERVER_PORT), 2000);
+                    probe.setSoTimeout(2000);
+                    java.io.PrintWriter pw = new java.io.PrintWriter(probe.getOutputStream(), true);
+                    java.io.BufferedReader br = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(probe.getInputStream()));
+                    pw.println("GHOST_PING");
+                    String resp = br.readLine();
+                    probe.close();
+                    if ("GHOST_PONG".equals(resp)) {
+                        Platform.runLater(() -> {
+                            if (client == null) {
+                                discoveryService.stop(); // stop auto-scan — we have the IP
+                                client = new GhostClient(adminIp, user);
+                                client.setListener(packet -> handleCommand(packet));
+                                client.connect();
+                                hideWaitingBox();
+                                if (statusLabel != null) statusLabel.setText("● Connected");
+                            } else {
+                                // Already connected (race with auto-discovery) — just update IP
+                                client.updateAdminIp(adminIp);
+                                hideWaitingBox();
+                            }
+                        });
+                    } else {
+                        Platform.runLater(() -> {
+                            showNotification("❌ No Ghost server found at " + adminIp);
+                            manualConnectBtn.setDisable(false);
+                            manualConnectBtn.setText("⚡ Connect");
+                        });
+                    }
+                } catch (Exception ex) {
+                    Platform.runLater(() -> {
+                        showNotification("❌ Cannot reach " + adminIp + " — check IP and firewall");
+                        manualConnectBtn.setDisable(false);
+                        manualConnectBtn.setText("⚡ Connect");
+                    });
+                }
+            }, "GhostManualConnect").start();
+        });
+
+        // Allow pressing Enter in the IP field to trigger connect
+        manualIpField.setOnAction(e -> manualConnectBtn.fire());
+
+        HBox manualRow = new HBox(10, manualIpField, manualConnectBtn);
+        manualRow.setAlignment(Pos.CENTER);
+        // ─────────────────────────────────────────────────────────────────────
+
+        waitingBox.getChildren().addAll(waitingLabel, myIpLabel, orLabel, manualRow);
 
         // Click to fullscreen
         streamBox.setOnMouseClicked(e -> openFullScreenStream());
@@ -832,7 +927,6 @@ public class StudentDashboard {
 
     /** Internal: connect directly to a known admin IP (no dialog). */
     private static void connectToAdminManually() {
-        // This is now only used internally — the button no longer shows after build.
-        // Kept for compatibility; TCP scan calls Platform.runLater directly instead.
+        // No-op — manual connect is now handled inline inside the waitingBox button.
     }
 }
