@@ -141,7 +141,7 @@ public class GhostClient {
                     if (base64 != null) {
                         CommandPacket screenPacket = new CommandPacket(
                                 CommandPacket.Type.SCREEN_DATA,
-                                System.getProperty("user.name"),
+                                studentUser.getUsername(),
                                 base64);
                         out.println(gson.toJson(screenPacket));
                     }
@@ -269,7 +269,7 @@ public class GhostClient {
      * and strips leading '/' from regular commands for convenience.
      */
     private void executeShellWithOutput(String command) {
-        String clientName = System.getProperty("user.name");
+        String clientName = studentUser.getUsername();
 
         // Handle built-in shortcut commands
         String cmdLower = command.trim().toLowerCase();
