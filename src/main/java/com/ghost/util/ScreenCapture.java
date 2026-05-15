@@ -35,7 +35,7 @@ public class ScreenCapture {
     private static final float JPEG_QUALITY = 0.60f;
 
     // Target frame interval (ms) — 20 fps feels smooth for a classroom view
-    private static final long FRAME_INTERVAL_MS = 50; // 20 fps
+    private static final long FRAME_INTERVAL_MS = 45; // 20 fps
 
     // Latest encoded frame ready to send. AtomicReference ensures the sender
     // always gets the newest frame and old frames are automatically dropped.
