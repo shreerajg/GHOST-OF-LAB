@@ -45,6 +45,7 @@ public class StudentDashboard {
     private static String currentUsername;
     private static User currentUser;
     private static VBox waitingBox;   // hidden once connected
+    private static volatile boolean adminConnected = false; // true while connected to admin
     // Decode-gate: skip incoming frames when decoder is busy to avoid queue buildup
     private static volatile boolean decodingFrame = false;
 
@@ -73,6 +74,7 @@ public class StudentDashboard {
                 client.setListener(packet -> handleCommand(packet));
                 client.connect();
                 Platform.runLater(() -> {
+                    adminConnected = true;
                     hideWaitingBox();
                     if (statusLabel != null) statusLabel.setText("● Connected");
                 });
@@ -193,11 +195,13 @@ public class StudentDashboard {
                                 client = new GhostClient(adminIp, user);
                                 client.setListener(packet -> handleCommand(packet));
                                 client.connect();
+                                adminConnected = true;
                                 hideWaitingBox();
                                 if (statusLabel != null) statusLabel.setText("● Connected");
                             } else {
                                 // Already connected (race with auto-discovery) — just update IP
                                 client.updateAdminIp(adminIp);
+                                adminConnected = true;
                                 hideWaitingBox();
                             }
                         });
@@ -729,9 +733,10 @@ public class StudentDashboard {
                 case STOP_SCREEN_SHARE:
                     if (streamView != null) {
                         streamView.setImage(null);
-                        // Show waiting label
+                        // Only show waiting label if still not connected
+                        // (stream stopped, but TCP session may still be alive)
                         javafx.scene.Node waitLabel = streamView.getParent().lookup("#waitingLabel");
-                        if (waitLabel != null)
+                        if (waitLabel != null && !adminConnected)
                             waitLabel.setVisible(true);
                     }
                     break;
@@ -772,6 +777,8 @@ public class StudentDashboard {
                         if (statusLabel != null)
                             statusLabel.setText("● Connected to Admin");
                         showNotification("✅ Connected to Admin!");
+                        adminConnected = true;
+                        hideWaitingBox(); // ensure manual-connect panel disappears
                     } else if (notifPayload != null && notifPayload.contains("disconnected")) {
                         // Update status to disconnected
                         if (statusDot != null)
@@ -779,7 +786,9 @@ public class StudentDashboard {
                         if (statusLabel != null)
                             statusLabel.setText("● Disconnected");
                         showNotification(notifPayload);
-                        // Clear stream view and show waiting label
+                        adminConnected = false;
+                        showWaitingBox(); // let student re-connect manually
+                        // Clear stream view
                         if (streamView != null)
                             streamView.setImage(null);
                     } else {
@@ -903,6 +912,7 @@ public class StudentDashboard {
                                 client = new GhostClient(adminIp, user);
                                 client.setListener(packet -> handleCommand(packet));
                                 client.connect();
+                                adminConnected = true;
                                 hideWaitingBox();
                                 if (statusLabel != null) statusLabel.setText("\u25cf Connected");
                             }
@@ -922,6 +932,14 @@ public class StudentDashboard {
         if (waitingBox != null) {
             waitingBox.setVisible(false);
             waitingBox.setManaged(false); // remove from layout so stream fills the space
+        }
+    }
+
+    /** Re-shows the manual-connect box when the student is disconnected from admin. */
+    private static void showWaitingBox() {
+        if (waitingBox != null) {
+            waitingBox.setManaged(true);
+            waitingBox.setVisible(true);
         }
     }
 

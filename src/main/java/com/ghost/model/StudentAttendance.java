@@ -1,5 +1,6 @@
 package com.ghost.model;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -58,6 +59,20 @@ public class StudentAttendance {
 
     public String getLastSeenFormatted() {
         return lastSeen.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    }
+
+    /**
+     * Returns total connection time formatted as HH:mm:ss.
+     * Uses the gap between firstConnected and lastSeen.
+     */
+    public String getTotalConnectedDuration() {
+        Duration d = Duration.between(firstConnected, lastSeen);
+        long totalSeconds = d.getSeconds();
+        if (totalSeconds < 0) totalSeconds = 0;
+        long hours   = totalSeconds / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+        long secs    = totalSeconds % 60;
+        return String.format("%02d:%02d:%02d", hours, minutes, secs);
     }
 
     public String getClassDivision() {

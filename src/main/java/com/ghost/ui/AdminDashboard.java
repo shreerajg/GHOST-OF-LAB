@@ -611,6 +611,29 @@ public class AdminDashboard {
     }
 
     /**
+     * Capture screenshot for a single specific student and save to disk.
+     */
+    private static void captureStudentScreenshot(String studentName, ImageView imgView) {
+        Image image = imgView.getImage();
+        if (image == null) {
+            if (chatArea != null) chatArea.appendText("[SCREENSHOT]: No image available for " + studentName + "\n");
+            return;
+        }
+        File screenshotsDir = new File(System.getProperty("user.home"), "Ghost Screenshots");
+        screenshotsDir.mkdirs();
+        String timestamp = new java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss").format(new java.util.Date());
+        try {
+            File outputFile = new File(screenshotsDir, studentName + "_" + timestamp + ".png");
+            java.nio.file.Files.write(outputFile.toPath(), imageToPngBytes(image));
+            if (chatArea != null)
+                chatArea.appendText("[SCREENSHOT]: 📸 Saved " + studentName + " → " + outputFile.getName() + "\n");
+        } catch (Exception e) {
+            if (chatArea != null)
+                chatArea.appendText("[ERROR]: Failed screenshot for " + studentName + ": " + e.getMessage() + "\n");
+        }
+    }
+
+    /**
      * Convert JavaFX Image to PNG bytes
      */
     private static byte[] imageToPngBytes(Image image) throws Exception {

@@ -115,7 +115,7 @@ public class AttendanceTracker {
 
             // ----- Write the merged file -----
             try (PrintWriter writer = new PrintWriter(new FileWriter(csvFile, false /* overwrite */))) {
-                writer.println("Roll Number,Username,Class,Division,Status,First Connected,Last Seen");
+                writer.println("Roll Number,Username,Class,Division,Status,First Connected,Last Seen,Time Connected");
                 for (Map.Entry<String, String> row : allRows) {
                     writer.println(row.getValue());
                 }
@@ -146,13 +146,14 @@ public class AttendanceTracker {
 
     /** Build a single CSV data row for a student. */
     private static String buildCsvRow(StudentAttendance s) {
-        return String.format("%d,\"%s\",\"%s\",\"%s\",\"Present\",\"%s\",\"%s\"",
+        return String.format("%d,\"%s\",\"%s\",\"%s\",\"Present\",\"%s\",\"%s\",\"%s\"",
                 s.getRollNumber(),
                 escapeCsv(s.getUsername()),
                 escapeCsv(s.getClassName()),
                 escapeCsv(s.getDivision()),
                 s.getFirstConnectedFormatted(),
-                s.getLastSeenFormatted());
+                s.getLastSeenFormatted(),
+                s.getTotalConnectedDuration());
     }
 
     /**
