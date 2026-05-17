@@ -3,6 +3,7 @@ package com.ghost.util;
 import com.ghost.model.StudentAttendance;
 import java.io.*;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -99,6 +100,11 @@ public class AttendanceTracker {
             String filename = "Attendance_" + classDivision + "_" + date + ".csv";
             File csvFile = new File(attendanceDir, filename);
 
+            // Snapshot 'now' once so all rows in this file share the same reference time.
+            // Students still connected (lastSeen == firstConnected) will use this as their
+            // effective last-seen, giving them a real duration instead of 0:00:00.
+            LocalDateTime now = LocalDateTime.now();
+
             // ----- Merge with any existing file for today -----
             // Map: username -> row-line (existing records we don't want to duplicate)
             Map<String, String> existingRows = readExistingRows(csvFile);
@@ -106,7 +112,7 @@ public class AttendanceTracker {
             // Merge: overwrite existing row for each in-memory student
             // (their Last Seen will be fresher than what was in the file).
             for (StudentAttendance s : newStudents) {
-                existingRows.put(s.getUsername(), buildCsvRow(s));
+                existingRows.put(s.getUsername(), buildCsvRow(s, now));
             }
 
             // Sort all records (existing + new) by roll number numerically.
@@ -144,16 +150,20 @@ public class AttendanceTracker {
     // Private helpers
     // -----------------------------------------------------------------------
 
-    /** Build a single CSV data row for a student. */
-    private static String buildCsvRow(StudentAttendance s) {
+    /**
+     * Build a single CSV data row for a student.
+     * @param now  the effective "current" time — used for students still connected
+     *             so their Last Seen and Duration are real values, not 0:00:00.
+     */
+    private static String buildCsvRow(StudentAttendance s, LocalDateTime now) {
         return String.format("%d,\"%s\",\"%s\",\"%s\",\"Present\",\"%s\",\"%s\",\"%s\"",
                 s.getRollNumber(),
                 escapeCsv(s.getUsername()),
                 escapeCsv(s.getClassName()),
                 escapeCsv(s.getDivision()),
                 s.getFirstConnectedFormatted(),
-                s.getLastSeenFormatted(),
-                s.getTotalConnectedDuration());
+                s.getLastSeenEffective(now),
+                s.getDurationEffective(now));
     }
 
     /**
