@@ -445,7 +445,12 @@ public class AdminDashboard {
             });
         });
 
-        controls.getChildren().addAll(lockBtn, msgBtn, cmdBtn);
+        Button snapBtn = new Button("📸");
+        snapBtn.setStyle("-fx-background-color: #f39c12; -fx-text-fill: white; -fx-background-radius: 5;");
+        snapBtn.setTooltip(new Tooltip("Screenshot " + name));
+        snapBtn.setOnAction(e -> captureStudentScreenshot(name, imgView));
+
+        controls.getChildren().addAll(lockBtn, msgBtn, cmdBtn, snapBtn);
 
         card.getChildren().addAll(imgView, nameLabel, statusBox, controls);
         thumbnailGrid.getChildren().add(card);
