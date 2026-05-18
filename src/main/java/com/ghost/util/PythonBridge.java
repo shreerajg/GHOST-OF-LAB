@@ -91,39 +91,60 @@ public class PythonBridge {
     public static void askAI(String prompt, java.util.function.Consumer<String> callback) {
         new Thread(() -> {
             try {
-                // Use list command to handle spaces properly
                 ProcessBuilder pb = new ProcessBuilder("python", "python_modules/ai_interface.py", prompt);
                 File scriptFile = new File("python_modules/ai_interface.py");
                 if (!scriptFile.exists()) {
                     pb.command("python", "../python_modules/ai_interface.py", prompt);
                 }
 
-                // Fix Windows encoding: force Python to use UTF-8 for stdout
-                // Without this, Python's print() silently crashes on non-cp1252 chars
-                // (e.g. emojis in AI response), leaving stdout empty and UI showing "[AI]: "
-                pb.environment().put("PYTHONIOENCODING", "utf-8");
-                pb.environment().put("PYTHONUNBUFFERED", "1");  // flush output immediately
+                // Force Python UTF-8 so emojis / special chars never crash stdout
+                pb.environment().put("PYTHONIOENCODING",  "utf-8");
+                pb.environment().put("PYTHONUNBUFFERED",  "1");
 
                 Process p = pb.start();
 
-                // Read as UTF-8 to match Python's PYTHONIOENCODING=utf-8
-                BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
+                // ── Drain stderr silently on a background thread ──────────────
+                // This MUST happen concurrently; if stderr fills the OS pipe buffer
+                // while we are blocked reading stdout, the process deadlocks.
+                // We only log stderr to the Java console — students never see it.
+                final Process proc = p;
+                Thread stderrDrain = new Thread(() -> {
+                    try (BufferedReader err = new BufferedReader(
+                            new InputStreamReader(proc.getErrorStream(), StandardCharsets.UTF_8))) {
+                        String errLine;
+                        while ((errLine = err.readLine()) != null) {
+                            System.err.println("[Ghost AI stderr] " + errLine);
+                        }
+                    } catch (Exception ignored) {}
+                }, "GhostAI-StderrDrain");
+                stderrDrain.setDaemon(true);
+                stderrDrain.start();
+
+                // ── Read stdout — Python only writes here when it has a real answer ──
+                // The Python script retries internally; we just wait as long as needed.
                 StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line).append("\n");
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        response.append(line).append("\n");
+                    }
                 }
 
                 p.waitFor();
-                if (callback != null) {
-                    callback.accept(response.toString().trim());
+
+                String answer = response.toString().trim();
+                if (callback != null && !answer.isEmpty()) {
+                    callback.accept(answer);
                 }
+                // If answer is somehow still empty (process killed externally),
+                // we silently do nothing — the "Thinking..." text stays in the
+                // chat until the student asks again.
 
             } catch (Exception e) {
-                if (callback != null)
-                    callback.accept("Error asking Ghost AI: " + e.getMessage());
+                // Log to Java console only — do NOT surface to the student UI
+                System.err.println("[Ghost AI] PythonBridge exception: " + e.getMessage());
             }
-        }).start();
+        }, "GhostAI-Worker").start();
     }
 }
