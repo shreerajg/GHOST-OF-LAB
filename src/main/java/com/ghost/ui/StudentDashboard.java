@@ -537,17 +537,24 @@ public class StudentDashboard {
             String q = input.getText();
             if (!q.isEmpty()) {
                 aiChat.appendText("[YOU]: " + q + "\n");
-                aiChat.appendText("[AI]: Thinking...\n");
+                aiChat.appendText("[AI]: ⏳ Thinking... (please wait)\n");
+                aiChat.setScrollTop(Double.MAX_VALUE);
+                input.clear();
+                input.setDisable(true);
+                askBtn.setDisable(true);
+                askBtn.setText("...");
                 PythonBridge.askAI(q, response -> {
                     Platform.runLater(() -> {
-                        // Replace "Thinking..." with actual response
+                        // Replace the thinking line with the real answer
                         String text = aiChat.getText();
-                        text = text.replace("[AI]: Thinking...\n", "[AI]: " + response + "\n\n");
+                        text = text.replace("[AI]: ⏳ Thinking... (please wait)\n", "[AI]: " + response + "\n\n");
                         aiChat.setText(text);
                         aiChat.setScrollTop(Double.MAX_VALUE);
+                        input.setDisable(false);
+                        askBtn.setDisable(false);
+                        askBtn.setText("ASK");
                     });
                 });
-                input.clear();
             }
         });
 
