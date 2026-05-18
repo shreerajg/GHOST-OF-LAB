@@ -207,6 +207,8 @@ public class AdminDashboard {
             }
         });
         chatInput.getChildren().addAll(msgField, sendBtn);
+        // Allow Enter to send the chat message
+        msgField.setOnAction(e -> sendBtn.fire());
 
         rightPanel.getChildren().addAll(chatTitle, chatArea, chatInput);
         root.setRight(rightPanel);
@@ -239,6 +241,8 @@ public class AdminDashboard {
         });
 
         console.getChildren().addAll(prompt, cmdInput, execBtn);
+        // Allow Enter to execute the command
+        cmdInput.setOnAction(e -> execBtn.fire());
         root.setBottom(console);
 
         // ========== ADMIN DEV SIGNATURE — fade-in after scene is ready ==========

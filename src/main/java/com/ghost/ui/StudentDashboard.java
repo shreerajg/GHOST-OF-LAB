@@ -493,6 +493,8 @@ public class StudentDashboard {
         });
 
         inputBox.getChildren().addAll(input, sendBtn);
+        // Allow Enter to send the chat message
+        input.setOnAction(e -> sendBtn.fire());
         panel.getChildren().addAll(header, chatArea, inputBox);
         return panel;
     }
@@ -550,6 +552,8 @@ public class StudentDashboard {
         });
 
         inputBox.getChildren().addAll(input, askBtn);
+        // Allow Enter to ask Ghost AI
+        input.setOnAction(e -> askBtn.fire());
         panel.getChildren().addAll(header, aiChat, inputBox);
         return panel;
     }

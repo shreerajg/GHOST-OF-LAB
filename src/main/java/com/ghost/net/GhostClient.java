@@ -194,12 +194,8 @@ public class GhostClient {
                     Runtime.getRuntime().exec("shutdown /r /t 5");
                     break;
                 case OPEN_URL:
-                    // Open URL in default browser
-                    String url = packet.getPayload();
-                    String os = System.getProperty("os.name").toLowerCase();
-                    if (os.contains("win")) {
-                        Runtime.getRuntime().exec("cmd /c start " + url);
-                    }
+                    // Handled by UI listener (StudentDashboard) via Desktop.browse()
+                    // Do NOT open here — would cause double browser tab
                     break;
                 case INTERNET:
                     // Use HostsFileManager (no Python dependency, keeps LAN alive)
@@ -220,6 +216,7 @@ public class GhostClient {
                 case ADMIN_SCREEN:
                 case NOTIFICATION:
                 case FILE_DATA:
+                case STOP_SCREEN_SHARE:
                     // Handled by UI listener only
                     break;
                 default:
